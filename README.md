@@ -1,0 +1,91 @@
+<h1 align="center">
+    <strong>mod-alloc</strong>
+    <br>
+    <sup><sub>ALLOCATION PROFILING FOR RUST</sub></sup>
+</h1>
+
+<p align="center">
+    <a href="https://crates.io/crates/mod-alloc"><img alt="crates.io" src="https://img.shields.io/crates/v/mod-alloc.svg"></a>
+    <a href="https://crates.io/crates/mod-alloc"><img alt="downloads" src="https://img.shields.io/crates/d/mod-alloc.svg"></a>
+    <a href="https://docs.rs/mod-alloc"><img alt="docs.rs" src="https://docs.rs/mod-alloc/badge.svg"></a>
+    <a href="https://github.com/jamesgober/mod-alloc/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jamesgober/mod-alloc/actions/workflows/ci.yml/badge.svg"></a>
+</p>
+
+<p align="center">
+    Allocation counters, peak resident, and call-site grouping.<br>
+    Zero external dependencies in the hot path.
+</p>
+
+---
+
+## What it does
+
+`mod-alloc` is a global-allocator wrapper that tracks every
+allocation and deallocation. It answers:
+
+- **How many allocations did this code path make?**
+- **How many total bytes were allocated?**
+- **What was the peak resident memory?**
+- **Which call-sites caused the most allocations?** (with `backtraces` feature)
+
+Designed as a lean replacement for `dhat` with:
+
+- **MSRV 1.75** (vs dhat's 1.85+)
+- **Zero external dependencies** in the hot path (no `backtrace` crate)
+- **Lower overhead** per allocation via purpose-built inline capture
+- **DHAT-compatible output** so existing viewer tools work (via the `dhat-compat` feature)
+
+## Quick start
+
+```rust
+use mod_alloc::{Profiler, ModAlloc};
+
+#[global_allocator]
+static GLOBAL: ModAlloc = ModAlloc::new();
+
+fn main() {
+    let p = Profiler::start();
+
+    let v: Vec<u64> = (0..1000).collect();
+    drop(v);
+
+    let stats = p.stop();
+    println!("Allocations: {}", stats.alloc_count);
+    println!("Total bytes: {}", stats.total_bytes);
+    println!("Peak bytes:  {}", stats.peak_bytes);
+}
+```
+
+## Feature flags
+
+```toml
+[dependencies]
+mod-alloc = "0.1"                                                      # counters only (default)
+mod-alloc = { version = "0.1", features = ["backtraces"] }             # + call-site capture
+mod-alloc = { version = "0.1", features = ["dhat-compat"] }            # + DHAT-format output
+```
+
+## Why a new allocation profiler
+
+`dhat` is the de-facto standard but its dependency chain
+(`backtrace` 0.3.76 → `addr2line` 0.25.1) locks consumers at Rust
+1.85. For projects with broader MSRV targets, this is a real cost.
+
+`mod-alloc` provides the same core capability with inline backtrace
+capture (frame-pointer-based, x86_64 + aarch64 initially) and no
+external dependencies. The trade: fewer architectures supported in
+v1.0; we add ARM32, RISC-V, etc. based on demand.
+
+## Status
+
+`v0.1.0` is the name-claim release. The placeholder forwards to the
+system allocator without real tracking. Real per-thread arena-based
+tracking lands in `0.9.x`.
+
+## Minimum supported Rust version
+
+`1.75` — pinned in `Cargo.toml` and verified by CI.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

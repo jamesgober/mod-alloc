@@ -1,0 +1,49 @@
+[package]
+name = "mod-alloc"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+readme = "README.md"
+license = "Apache-2.0"
+
+authors = [
+    "James Gober <me@jamesgober.com>"
+]
+
+description = "Allocation profiling for Rust. Counters, peak resident, and call-site grouping with inline backtrace capture. Zero external dependencies in the hot path. Lean dhat replacement targeting MSRV 1.75."
+
+keywords = [
+    "memory-profiling",
+    "allocator",
+    "profiler",
+    "heap",
+    "alloc"
+]
+
+categories = [
+    "development-tools::profiling",
+    "memory-management"
+]
+
+documentation = "https://docs.rs/mod-alloc"
+repository = "https://github.com/jamesgober/mod-alloc"
+homepage = "https://github.com/jamesgober/mod-alloc"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+
+[dev-dependencies]
+
+[features]
+default = ["std", "counters"]
+std = []
+counters = ["std"]
+backtraces = ["std"]
+dhat-compat = ["std", "backtraces"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
