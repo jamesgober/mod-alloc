@@ -1,6 +1,6 @@
 [package]
 name = "mod-alloc"
-version = "0.9.1"
+version = "0.9.2"
 edition = "2021"
 rust-version = "1.75"
 readme = "README.md"
@@ -35,6 +35,20 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+# v0.9.2 `symbolicate` opt-in: approved external-dep exception
+# per `.dev/DIRECTIVES.md` section 2.2. Default builds and the
+# allocation hot path remain zero-runtime-dep.
+addr2line = { version = "0.21", optional = true, default-features = false, features = ["std", "rustc-demangle"] }
+object = { version = "0.32", optional = true, default-features = false, features = ["read", "std"] }
+rustc-demangle = { version = "0.1", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+pdb = { version = "0.8", optional = true }
+# Pin uuid to a version compatible with our MSRV 1.75. `pdb`
+# pulls `uuid` in transitively; without this pin Cargo resolves
+# the latest 1.x which currently requires rustc 1.85+. The pinned
+# version supports MSRV 1.63 per the uuid crate's policy.
+uuid = { version = "=1.10.0", optional = true }
 
 [dev-dependencies]
 
@@ -44,6 +58,7 @@ std = []
 counters = ["std"]
 backtraces = ["std"]
 dhat-compat = ["std", "backtraces"]
+symbolicate = ["std", "backtraces", "dep:addr2line", "dep:object", "dep:rustc-demangle", "dep:pdb", "dep:uuid"]
 
 [profile.release]
 opt-level = 3

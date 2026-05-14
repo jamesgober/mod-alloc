@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-05-14
+
+### Added
+
+- **`symbolicate` cargo feature.** Turns the raw return addresses
+  captured by v0.9.1's backtrace path into
+  `(function, file, line)` tuples at report-generation time.
+  Available on Linux, macOS, *BSD via `addr2line` + `object`;
+  Windows via `pdb`. All four resolver crates plus
+  `rustc-demangle` are pulled in only when the feature is on; the
+  default build remains zero-runtime-dep.
+- **`ModAlloc::symbolicated_report() -> Vec<SymbolicatedCallSite>`**.
+  Drains the per-call-site table and resolves each frame against
+  the running binary's debug info. Cached per-address across
+  calls; allocates, so safe to call only from outside the
+  allocator hook.
+- **`SymbolicatedCallSite`** and **`SymbolicatedFrame`** public
+  types behind `#[cfg(feature = "symbolicate")]`. `frames` is a
+  `Vec` in stack-frame order with `inlined: bool` marking
+  expansions from a single physical return address.
+- **Self-binary discovery** via `std::env::current_exe`, cached
+  in a `OnceLock<Option<PathBuf>>`. Falls back to unresolved
+  frames if the binary path cannot be determined.
+- **Per-process address cache** in `symbolicate::report` keyed by
+  raw `u64` address. Cache miss runs the platform symbolicator
+  once; subsequent calls reuse the cached `Vec<SymbolicatedFrame>`.
+- **Approved external-dep exception** in `.dev/DIRECTIVES.md`
+  section 2.2 documenting the `symbolicate` feature's deps
+  (`addr2line`, `object`, `rustc-demangle`, `pdb`, plus a
+  pinned `uuid = "=1.10.0"` to hold MSRV 1.75 against `pdb`'s
+  latest transitive `uuid` 1.x).
+- New tests:
+  - `tests/symbolicate_self.rs`: self-symbolication of a known
+    in-test-binary function; downgrades to shape-only when
+    debug info is unavailable.
+  - `tests/symbolicate_concurrent.rs`: 8 threads calling
+    `symbolicated_report()` simultaneously, asserts no deadlock
+    and consistent row count.
+  - `src/symbolicate/self_binary.rs` unit tests for path
+    resolution and caching.
+- **`examples/symbolicate.rs`** prints top-10 call sites sorted
+  by total bytes with resolved function names plus inlined
+  frames where available.
+- CI matrix gains explicit `backtraces` + `symbolicate` feature
+  steps with the FP flag set.
+
+### Changed
+
+- Module-level rustdoc in `src/lib.rs` updated to mention Tier 2
+  symbolication.
+- The `symbolicate` feature implies `backtraces` (which in turn
+  implies `std`). Activating it alone is sufficient.
+- Linux/macOS produce richer output than Windows: DWARF inlining
+  info is more complete than PDB's `S_INLINESITE` decoding (the
+  latter is deferred for v0.9.3+). Asymmetry is documented and
+  not gated.
+
+### Limitations (Windows path)
+
+- No source file / line on Windows yet. PDB exposes line info
+  via `module.line_program()` but threading it through the
+  index is non-trivial; deferred to a later release.
+- No inlined-frame expansion on Windows. PDB `S_INLINESITE`
+  records are not yet decoded.
+- Best-effort address-to-RVA translation: without the module's
+  load base we mask `address` to 32 bits and binary-search the
+  RVA index. Exact for non-ASLR builds; usable but approximate
+  for ASLR builds.
+- C++ frames remain mangled (only Rust mangling is decoded via
+  `rustc-demangle`). Adding `cpp_demangle` is a follow-up if
+  there's real demand.
+
 ## [0.9.1] - 2026-05-14
 
 ### Added
@@ -226,7 +298,8 @@ will not work. Real implementation lands in `0.9.x` along with:
 - DHAT-compatible JSON output.
 - Statistical validation suite.
 
-[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/jamesgober/mod-alloc/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/jamesgober/mod-alloc/compare/v0.1.0...v0.9.0
 [0.1.0]: https://github.com/jamesgober/mod-alloc/releases/tag/v0.1.0

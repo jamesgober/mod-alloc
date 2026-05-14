@@ -52,6 +52,15 @@ jobs:
           RUSTFLAGS: "-C force-frame-pointers=yes"
         run: cargo test --features backtraces --verbose
 
+      - name: Build (symbolicate feature)
+        env:
+          RUSTFLAGS: "-C force-frame-pointers=yes"
+        run: cargo build --features symbolicate --verbose
+      - name: Test (symbolicate feature)
+        env:
+          RUSTFLAGS: "-C force-frame-pointers=yes"
+        run: cargo test --features symbolicate --verbose
+
       - name: Build (all features)
         env:
           RUSTFLAGS: "-C force-frame-pointers=yes"

@@ -33,10 +33,15 @@ it is installed:
 - **Which call sites did most of the allocating?** (with the
   `backtraces` feature)
 
-The whole crate is `std`-only. No `backtrace`, no `addr2line`, no
-`gimli`, no `libc`. Inline frame-pointer walking on `x86_64` and
-`aarch64` for call-site capture; raw `mmap` / `VirtualAlloc` for
-the per-thread arena and the global aggregation table.
+The allocation hot path is `std`-only. No `backtrace`, no `libc`,
+no `gimli` in the alloc path. Inline frame-pointer walking on
+`x86_64` and `aarch64` for call-site capture; raw `mmap` /
+`VirtualAlloc` for the per-thread arena and the global
+aggregation table.
+
+The opt-in `symbolicate` feature pulls in pure-Rust `addr2line` +
+`object` + `pdb` + `rustc-demangle` for offline report
+generation; the alloc hot path stays untouched.
 
 ## Quick start
 
@@ -63,16 +68,18 @@ fn main() {
 
 ```toml
 [dependencies]
-mod-alloc = "0.9"                                            # Tier 1: counters (default)
-mod-alloc = { version = "0.9", features = ["backtraces"] }   # Tier 2: call-site capture
-mod-alloc = { version = "0.9", features = ["dhat-compat"] }  # Tier 3: DHAT JSON output (v0.9.3)
+mod-alloc = "0.9"                                             # Tier 1: counters (default)
+mod-alloc = { version = "0.9", features = ["backtraces"] }    # Tier 2: call-site capture
+mod-alloc = { version = "0.9", features = ["symbolicate"] }   # + function/file/line names
+mod-alloc = { version = "0.9", features = ["dhat-compat"] }   # Tier 3: DHAT JSON output (v0.9.3)
 ```
 
-| Feature       | What it adds                                            | Status |
-|---------------|---------------------------------------------------------|--------|
-| `counters`    | Four lock-free counters via `GlobalAlloc` (default)     | shipped (v0.9.0) |
-| `backtraces`  | Inline FP walk + per-call-site aggregation              | shipped (v0.9.1) |
-| `dhat-compat` | Emit JSON for the official DHAT viewer                  | planned (v0.9.3) |
+| Feature       | What it adds                                              | Status            |
+|---------------|-----------------------------------------------------------|-------------------|
+| `counters`    | Four lock-free counters via `GlobalAlloc` (default)       | shipped (v0.9.0)  |
+| `backtraces`  | Inline FP walk + per-call-site aggregation                | shipped (v0.9.1)  |
+| `symbolicate` | Resolve raw addresses to `(function, file, line)`         | shipped (v0.9.2)  |
+| `dhat-compat` | Emit JSON for the official DHAT viewer                    | planned (v0.9.3)  |
 
 ## Backtraces
 
@@ -129,16 +136,16 @@ demand.
 
 ## Status
 
-| Milestone                                  | Version  | State    |
-|--------------------------------------------|----------|----------|
-| Name-claim placeholder                     | `v0.1.0` | shipped  |
-| Real `GlobalAlloc` + Tier 1 counters       | `v0.9.0` | shipped  |
-| Tier 2: inline backtrace capture           | `v0.9.1` | shipped  |
+| Milestone                                  | Version    | State   |
+|--------------------------------------------|------------|---------|
+| Name-claim placeholder                     | `v0.1.0`   | shipped |
+| Real `GlobalAlloc` + Tier 1 counters       | `v0.9.0`   | shipped |
+| Tier 2: inline backtrace capture           | `v0.9.1`   | shipped |
 | Tier 2 perf optimisation                   | `v0.9.1.1` | planned |
-| Symbolication for reports                  | `v0.9.2` | planned  |
-| Tier 3: DHAT-compatible JSON output        | `v0.9.3` | planned  |
-| `dev-bench` integration (drop dhat)        | `v0.9.4` | planned  |
-| Stable API (`1.0`)                         | `v1.0.0` | planned  |
+| Symbolication for reports                  | `v0.9.2`   | shipped |
+| Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | planned |
+| `dev-bench` integration (drop dhat)        | `v0.9.4`   | planned |
+| Stable API (`1.0`)                         | `v1.0.0`   | planned |
 
 The `1.0` release freezes the public API and the wire format.
 Breaking changes after that require a major bump.

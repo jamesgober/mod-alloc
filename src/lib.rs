@@ -76,6 +76,12 @@ mod backtrace;
 #[cfg(feature = "backtraces")]
 pub use backtrace::CallSiteStats;
 
+#[cfg(feature = "symbolicate")]
+mod symbolicate;
+
+#[cfg(feature = "symbolicate")]
+pub use symbolicate::{SymbolicatedCallSite, SymbolicatedFrame};
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::ptr;
@@ -299,6 +305,45 @@ impl ModAlloc {
     #[cfg(feature = "backtraces")]
     pub fn call_sites(&self) -> Vec<CallSiteStats> {
         backtrace::call_sites_report()
+    }
+
+    /// Drain the per-call-site table and symbolicate each frame
+    /// against the running binary's own debug info.
+    ///
+    /// Available only with the `symbolicate` cargo feature, which
+    /// also implies `backtraces`. Returns one
+    /// [`SymbolicatedCallSite`] per unique call site, each
+    /// carrying resolved function names plus (where available)
+    /// source file and line.
+    ///
+    /// Allocates. Safe to call from non-allocator contexts only
+    /// (ordinary user code outside the global-allocator hook).
+    ///
+    /// Results are cached per-address across calls.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # #[cfg(feature = "symbolicate")]
+    /// # fn demo() {
+    /// use mod_alloc::ModAlloc;
+    ///
+    /// #[global_allocator]
+    /// static GLOBAL: ModAlloc = ModAlloc::new();
+    ///
+    /// let _v: Vec<u8> = vec![0; 1024];
+    /// for site in GLOBAL.symbolicated_report() {
+    ///     let top = &site.frames[0];
+    ///     println!("{} allocs / {} bytes at {}",
+    ///         site.count,
+    ///         site.total_bytes,
+    ///         top.function.as_deref().unwrap_or("<unresolved>"));
+    /// }
+    /// # }
+    /// ```
+    #[cfg(feature = "symbolicate")]
+    pub fn symbolicated_report(&self) -> Vec<SymbolicatedCallSite> {
+        symbolicate::symbolicated_report()
     }
 }
 
