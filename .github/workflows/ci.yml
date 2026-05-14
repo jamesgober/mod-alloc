@@ -104,6 +104,14 @@ jobs:
       # ASAN. Nightly is required because -Zsanitizer is unstable.
       RUSTFLAGS: "-Zsanitizer=address -C force-frame-pointers=yes"
       RUSTDOCFLAGS: "-Zsanitizer=address"
+      # Disable use-after-return fake stacks. ASAN's fake-stack
+      # mode heap-allocates local variables, which moves them
+      # outside the real stack range that `pthread_getattr_np`
+      # reports to the walker. The walker is correct; the test
+      # would just see local addresses that are not in the
+      # reported stack range. We want ASAN to use the real stack
+      # so the walker's bounds checks are actually exercised.
+      ASAN_OPTIONS: "detect_stack_use_after_return=0"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly

@@ -58,8 +58,9 @@
 //! and `RUSTFLAGS="-C force-frame-pointers=yes"`, each tracked
 //! allocation captures up to 8 frames of its call site via inline
 //! frame-pointer walking on `x86_64` and `aarch64`. Per-call-site
-//! aggregation is exposed via [`ModAlloc::call_sites`]; the result
-//! is raw return addresses. Symbolication ships in v0.9.2.
+//! aggregation is exposed via `ModAlloc::call_sites` (available
+//! only with the `backtraces` feature); the result is raw return
+//! addresses. Symbolication ships in v0.9.2.
 //!
 //! Aggregation-table size is controlled by the `MOD_ALLOC_BUCKETS`
 //! environment variable at process start (default 4,096 buckets,
