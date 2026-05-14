@@ -29,11 +29,22 @@ jobs:
       # `cargo --version` fails the job loudly with a clear diagnostic
       # if anything is still wrong, instead of leaving the failure
       # buried inside a downstream `cargo build`.
-      - name: Verify toolchain is fully installed
+      - name: Verify toolchain before cache
         run: |
-          rustup show active-toolchain || rustup default stable
+          rustup default stable
+          rustup show
           cargo --version
+          rustc --version
       - uses: Swatinem/rust-cache@v2
+      # The cache restore on macos-latest has been observed to
+      # leave `cargo` resolving to `rustup-init` on the very next
+      # step. Re-running `rustup default stable` after the cache
+      # restore is the workaround mod-tempdir adopted; we mirror
+      # it here.
+      - name: Re-verify toolchain after cache
+        run: |
+          rustup default stable
+          cargo --version
 
       - name: Build (default features)
         run: cargo build --verbose
