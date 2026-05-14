@@ -20,6 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+      # Defensive: `dtolnay/rust-toolchain@stable` occasionally reports
+      # success on the macos-latest runner image without fully
+      # populating `cargo` on PATH (cargo resolves to `rustup-init`
+      # instead, causing the next step to die with
+      # `error: unexpected argument 'build' found`). Forcing
+      # `rustup default stable` here heals that case; the explicit
+      # `cargo --version` fails the job loudly with a clear diagnostic
+      # if anything is still wrong, instead of leaving the failure
+      # buried inside a downstream `cargo build`.
+      - name: Verify toolchain is fully installed
+        run: |
+          rustup show active-toolchain || rustup default stable
+          cargo --version
       - uses: Swatinem/rust-cache@v2
 
       - name: Build (default features)
