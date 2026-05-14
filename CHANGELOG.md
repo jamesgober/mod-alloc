@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-05-14
+
 ### Added
 
 - **Tier 2: inline backtrace capture (`backtraces` feature).** Each
@@ -70,6 +72,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow runs the `backtraces` test suite with
   `RUSTFLAGS="-C force-frame-pointers=yes"` so traces are
   meaningful on hosted runners.
+- **Walker reads are no longer `read_volatile`.** The walker reads
+  the current thread's own stack memory after the four
+  bounds/alignment/range/monotonicity checks; no other thread can
+  mutate that memory mid-walk. Plain reads let the compiler
+  schedule the loads and unblock register-allocation
+  opportunities. Same observable behaviour, with a small per-walk
+  speed-up.
+- **Table matching path no longer spins on `wait_published`.** The
+  init thread now uses `fetch_add` (instead of `store`) for the
+  bucket's `count` and `total_bytes` fields. Concurrent matching
+  writers can land their increments at any moment without being
+  clobbered, so the matching path becomes two `fetch_add` calls
+  with no spin loop. Readers (`call_sites_report`) still gate on
+  `frame_count > 0` for sample-frame coherence.
+- CI: ASAN job sets `ASAN_OPTIONS=detect_stack_use_after_return=0`
+  so the stack-bounds test runs against the real stack rather
+  than ASAN's fake-stack heap allocation. The walker is
+  unaffected either way; the test just needed a real-stack
+  context to assert against.
+- CI: added a defensive "Verify toolchain is fully installed"
+  step after `dtolnay/rust-toolchain@stable` to heal the
+  occasional macOS runner-image case where `cargo` resolves to
+  `rustup-init`.
 
 ### Design notes
 
@@ -201,6 +226,7 @@ will not work. Real implementation lands in `0.9.x` along with:
 - DHAT-compatible JSON output.
 - Statistical validation suite.
 
-[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/jamesgober/mod-alloc/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/jamesgober/mod-alloc/compare/v0.1.0...v0.9.0
 [0.1.0]: https://github.com/jamesgober/mod-alloc/releases/tag/v0.1.0

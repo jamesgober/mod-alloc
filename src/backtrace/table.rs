@@ -151,23 +151,28 @@ pub(crate) fn record(frames: &Frames, size: u64) {
                 .compare_exchange(0, h, Ordering::Release, Ordering::Acquire)
             {
                 Ok(_) => {
-                    // We own the initialisation phase. Write
-                    // `sample_frames` first, then the counts,
-                    // then publish via `frame_count` with Release.
+                    // We own the initialisation phase. Use
+                    // `fetch_add` (not `store`) on `count` and
+                    // `total_bytes` so concurrent matching
+                    // writers never have their increments
+                    // clobbered by our initial value. This lets
+                    // the matching path skip `wait_published`
+                    // entirely.
                     for i in 0..count {
                         bucket.sample_frames[i].store(frames.frames[i], Ordering::Relaxed);
                     }
-                    bucket.count.store(1, Ordering::Relaxed);
-                    bucket.total_bytes.store(size, Ordering::Relaxed);
+                    bucket.count.fetch_add(1, Ordering::Relaxed);
+                    bucket.total_bytes.fetch_add(size, Ordering::Relaxed);
                     bucket.frame_count.store(count as u64, Ordering::Release);
                     return;
                 }
                 Err(observed) => {
                     if observed == h {
                         // Same call site, another writer claimed
-                        // first. Wait for them to publish, then
-                        // increment.
-                        wait_published(bucket);
+                        // first. The init thread now uses
+                        // `fetch_add` (not `store`), so our
+                        // increment cannot be clobbered even if
+                        // it lands before init finishes.
                         bucket.count.fetch_add(1, Ordering::Relaxed);
                         bucket.total_bytes.fetch_add(size, Ordering::Relaxed);
                         return;
@@ -177,7 +182,11 @@ pub(crate) fn record(frames: &Frames, size: u64) {
                 }
             }
         } else if existing == h {
-            wait_published(bucket);
+            // Hot path: same site already in this bucket. No
+            // wait_published needed because the init thread now
+            // uses fetch_add for count/total_bytes; whether init
+            // has finished publishing `sample_frames` is a
+            // reader (`call_sites_report`) concern, not ours.
             bucket.count.fetch_add(1, Ordering::Relaxed);
             bucket.total_bytes.fetch_add(size, Ordering::Relaxed);
             return;
@@ -188,12 +197,6 @@ pub(crate) fn record(frames: &Frames, size: u64) {
             // Table full; drop event silently. Tracked in v0.9.2.
             return;
         }
-    }
-}
-
-fn wait_published(bucket: &Bucket) {
-    while bucket.frame_count.load(Ordering::Acquire) == 0 {
-        core::hint::spin_loop();
     }
 }
 
