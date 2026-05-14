@@ -47,15 +47,33 @@
 //!
 //! ## Status
 //!
-//! v0.9.0 ships Tier 1 (counters) only. The `backtraces` and
-//! `dhat-compat` cargo features are defined for forward
-//! compatibility but compile as no-ops; Tier 2 (inline backtrace
-//! capture) lands in v0.9.1 and Tier 3 (DHAT-compatible JSON
-//! output) lands in v0.9.3.
+//! v0.9.1 adds Tier 2 (inline backtrace capture) behind the
+//! `backtraces` feature. Default builds still ship Tier 1
+//! counters only. Tier 3 (DHAT-compatible JSON output) lands in
+//! v0.9.3.
+//!
+//! ## Backtraces (`backtraces` feature)
+//!
+//! With `mod-alloc = { version = "0.9", features = ["backtraces"] }`
+//! and `RUSTFLAGS="-C force-frame-pointers=yes"`, each tracked
+//! allocation captures up to 8 frames of its call site via inline
+//! frame-pointer walking on `x86_64` and `aarch64`. Per-call-site
+//! aggregation is exposed via [`ModAlloc::call_sites`]; the result
+//! is raw return addresses. Symbolication ships in v0.9.2.
+//!
+//! Aggregation-table size is controlled by the `MOD_ALLOC_BUCKETS`
+//! environment variable at process start (default 4,096 buckets,
+//! ~384 KB).
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
+
+#[cfg(feature = "backtraces")]
+mod backtrace;
+
+#[cfg(feature = "backtraces")]
+pub use backtrace::CallSiteStats;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -247,6 +265,40 @@ impl ModAlloc {
             );
         }
     }
+
+    /// Drain the per-call-site aggregation table into a `Vec`.
+    ///
+    /// Available only with the `backtraces` cargo feature. The
+    /// returned vector contains one [`CallSiteStats`] per unique
+    /// call site observed since the table was first written. Each
+    /// row carries up to 8 raw return addresses (top of stack
+    /// first), the number of allocations attributed to that site,
+    /// and the total bytes.
+    ///
+    /// Symbolication (resolving addresses to function names)
+    /// lands in `v0.9.2`. This method exposes raw addresses only.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # #[cfg(feature = "backtraces")]
+    /// # fn demo() {
+    /// use mod_alloc::ModAlloc;
+    ///
+    /// #[global_allocator]
+    /// static GLOBAL: ModAlloc = ModAlloc::new();
+    ///
+    /// let _v: Vec<u8> = vec![0; 1024];
+    /// for site in GLOBAL.call_sites() {
+    ///     println!("{} allocs, {} bytes at {:#x}",
+    ///         site.count, site.total_bytes, site.frames[0]);
+    /// }
+    /// # }
+    /// ```
+    #[cfg(feature = "backtraces")]
+    pub fn call_sites(&self) -> Vec<CallSiteStats> {
+        backtrace::call_sites_report()
+    }
 }
 
 impl Default for ModAlloc {
@@ -275,8 +327,11 @@ unsafe impl GlobalAlloc for ModAlloc {
         let ptr = unsafe { System.alloc(layout) };
         if !ptr.is_null() {
             if let Some(_g) = ReentryGuard::enter() {
-                self.record_alloc(layout.size() as u64);
+                let size = layout.size() as u64;
+                self.record_alloc(size);
                 self.register_self();
+                #[cfg(feature = "backtraces")]
+                backtrace::record_event(size);
             }
         }
         ptr
@@ -290,8 +345,11 @@ unsafe impl GlobalAlloc for ModAlloc {
         let ptr = unsafe { System.alloc_zeroed(layout) };
         if !ptr.is_null() {
             if let Some(_g) = ReentryGuard::enter() {
-                self.record_alloc(layout.size() as u64);
+                let size = layout.size() as u64;
+                self.record_alloc(size);
                 self.register_self();
+                #[cfg(feature = "backtraces")]
+                backtrace::record_event(size);
             }
         }
         ptr
@@ -320,6 +378,10 @@ unsafe impl GlobalAlloc for ModAlloc {
             if let Some(_g) = ReentryGuard::enter() {
                 self.record_realloc(layout.size() as u64, new_size as u64);
                 self.register_self();
+                // Per dhat semantics: realloc records as one event
+                // attributed to `new_size` (including shrinks).
+                #[cfg(feature = "backtraces")]
+                backtrace::record_event(new_size as u64);
             }
         }
         new_ptr

@@ -1,0 +1,14 @@
+# Build configuration for the `mod-alloc` crate itself.
+#
+# Enables frame pointers for in-crate builds so the `backtraces`
+# feature's inline FP walker can capture real frames during the
+# crate's own test suite and examples. This file does NOT affect
+# downstream consumers; cargo only honours `.cargo/config.toml`
+# inside the crate root being built from.
+#
+# Downstream callers who want backtrace capture must enable frame
+# pointers in their OWN build (the `backtraces` feature's build.rs
+# emits a warning if they have not).
+
+[build]
+rustflags = ["-C", "force-frame-pointers=yes"]

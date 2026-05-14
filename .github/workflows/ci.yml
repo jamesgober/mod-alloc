@@ -30,9 +30,22 @@ jobs:
       - name: Build (no default features)
         run: cargo build --no-default-features --verbose
 
+      - name: Build (backtraces feature)
+        env:
+          RUSTFLAGS: "-C force-frame-pointers=yes"
+        run: cargo build --features backtraces --verbose
+      - name: Test (backtraces feature)
+        env:
+          RUSTFLAGS: "-C force-frame-pointers=yes"
+        run: cargo test --features backtraces --verbose
+
       - name: Build (all features)
+        env:
+          RUSTFLAGS: "-C force-frame-pointers=yes"
         run: cargo build --all-features --verbose
       - name: Test (all features)
+        env:
+          RUSTFLAGS: "-C force-frame-pointers=yes"
         run: cargo test --all-features --verbose
 
   clippy:
@@ -73,8 +86,30 @@ jobs:
   msrv:
     name: MSRV (Rust 1.75)
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C force-frame-pointers=yes"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.75
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --all-features --verbose
+
+  asan:
+    name: AddressSanitizer (nightly Linux)
+    runs-on: ubuntu-latest
+    env:
+      # ASAN insurance for the unsafe backtrace path. Catches
+      # out-of-bounds reads in the FP walker that pass the
+      # mandatory range checks but would still be observable to
+      # ASAN. Nightly is required because -Zsanitizer is unstable.
+      RUSTFLAGS: "-Zsanitizer=address -C force-frame-pointers=yes"
+      RUSTDOCFLAGS: "-Zsanitizer=address"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+      - name: Test under ASAN
+        run: |
+          cargo test --features backtraces --target x86_64-unknown-linux-gnu -Zbuild-std --verbose
