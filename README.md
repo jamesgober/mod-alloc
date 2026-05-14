@@ -63,9 +63,9 @@ fn main() {
 
 ```toml
 [dependencies]
-mod-alloc = "0.1"                                                      # counters only (default)
-mod-alloc = { version = "0.1", features = ["backtraces"] }             # + call-site capture
-mod-alloc = { version = "0.1", features = ["dhat-compat"] }            # + DHAT-format output
+mod-alloc = "0.9"                                                      # counters only (default)
+mod-alloc = { version = "0.9", features = ["backtraces"] }             # + call-site capture (lands in v0.9.1)
+mod-alloc = { version = "0.9", features = ["dhat-compat"] }            # + DHAT-format output (lands in v0.9.3)
 ```
 
 ## Why a new allocation profiler
@@ -81,13 +81,18 @@ v1.0; we add ARM32, RISC-V, etc. based on demand.
 
 ## Status
 
-`v0.1.0` is the name-claim release. The placeholder forwards to the
-system allocator without real tracking. Real per-thread arena-based
-tracking lands in `0.9.x`.
+`v0.9.0` ships Tier 1 (counters). Installing `ModAlloc` as
+`#[global_allocator]` tracks every allocation, deallocation,
+reallocation, and zero-init allocation against four lock-free
+atomic counters. Per-allocation overhead measures under 50 ns on
+x86_64 (`cargo run --release --example bench_overhead`). Tier 2
+(inline backtrace capture) lands in `v0.9.1`. Tier 3
+(DHAT-compatible JSON output) lands in `v0.9.3`. The `1.0` release
+freezes the public API and the wire format.
 
 ## Minimum supported Rust version
 
-`1.75` — pinned in `Cargo.toml` and verified by CI.
+`1.75`, pinned in `Cargo.toml` and verified by CI.
 
 ## License
 
