@@ -37,6 +37,8 @@ fn smoke_stats_copy_and_eq() {
         total_bytes: 100,
         peak_bytes: 80,
         current_bytes: 40,
+        live_count: 2,
+        peak_live_count: 3,
     };
     let t = s;
     assert_eq!(s, t);

@@ -87,6 +87,9 @@ pub use symbolicate::{SymbolicatedCallSite, SymbolicatedFrame};
 #[cfg(feature = "dhat-compat")]
 mod dhat_json;
 
+#[cfg(feature = "dhat-compat")]
+pub mod dhat_compat;
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::ptr;
@@ -163,6 +166,8 @@ pub struct ModAlloc {
     total_bytes: AtomicU64,
     peak_bytes: AtomicU64,
     current_bytes: AtomicU64,
+    live_count: AtomicU64,
+    peak_live_count: AtomicU64,
 }
 
 impl ModAlloc {
@@ -187,6 +192,8 @@ impl ModAlloc {
             total_bytes: AtomicU64::new(0),
             peak_bytes: AtomicU64::new(0),
             current_bytes: AtomicU64::new(0),
+            live_count: AtomicU64::new(0),
+            peak_live_count: AtomicU64::new(0),
         }
     }
 
@@ -212,6 +219,8 @@ impl ModAlloc {
             total_bytes: self.total_bytes.load(Ordering::Relaxed),
             peak_bytes: self.peak_bytes.load(Ordering::Relaxed),
             current_bytes: self.current_bytes.load(Ordering::Relaxed),
+            live_count: self.live_count.load(Ordering::Relaxed),
+            peak_live_count: self.peak_live_count.load(Ordering::Relaxed),
         }
     }
 
@@ -237,6 +246,8 @@ impl ModAlloc {
         self.total_bytes.store(0, Ordering::Relaxed);
         self.peak_bytes.store(0, Ordering::Relaxed);
         self.current_bytes.store(0, Ordering::Relaxed);
+        self.live_count.store(0, Ordering::Relaxed);
+        self.peak_live_count.store(0, Ordering::Relaxed);
     }
 
     #[inline]
@@ -245,11 +256,14 @@ impl ModAlloc {
         self.total_bytes.fetch_add(size, Ordering::Relaxed);
         let new_current = self.current_bytes.fetch_add(size, Ordering::Relaxed) + size;
         self.peak_bytes.fetch_max(new_current, Ordering::Relaxed);
+        let new_live = self.live_count.fetch_add(1, Ordering::Relaxed) + 1;
+        self.peak_live_count.fetch_max(new_live, Ordering::Relaxed);
     }
 
     #[inline]
     fn record_dealloc(&self, size: u64) {
         self.current_bytes.fetch_sub(size, Ordering::Relaxed);
+        self.live_count.fetch_sub(1, Ordering::Relaxed);
     }
 
     #[inline]
@@ -519,9 +533,20 @@ unsafe impl GlobalAlloc for ModAlloc {
 ///     total_bytes: 1024,
 ///     peak_bytes: 512,
 ///     current_bytes: 256,
+///     live_count: 4,
+///     peak_live_count: 7,
 /// };
 /// assert_eq!(stats.alloc_count, 10);
 /// ```
+///
+/// # Version note
+///
+/// `live_count` and `peak_live_count` were added in v0.9.4 to
+/// support dhat-rs's `HeapStats` shape via the `dhat-compat`
+/// feature. Callers constructing `AllocStats` via struct literal
+/// must initialise the new fields; callers that only consume
+/// `AllocStats` via [`ModAlloc::snapshot`] or
+/// [`Profiler::stop`] are unaffected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllocStats {
     /// Number of allocations performed.
@@ -533,6 +558,12 @@ pub struct AllocStats {
     pub peak_bytes: u64,
     /// Currently-allocated bytes (allocations minus deallocations).
     pub current_bytes: u64,
+    /// Currently-alive allocation count (allocations minus
+    /// deallocations). Mirrors `dhat::HeapStats::curr_blocks`.
+    pub live_count: u64,
+    /// Peak live allocation count (highest `live_count` ever
+    /// observed). Mirrors `dhat::HeapStats::max_blocks`.
+    pub peak_live_count: u64,
 }
 
 /// Scoped profiler that captures a delta between start and stop.
@@ -609,11 +640,13 @@ impl Profiler {
                 .current_bytes
                 .saturating_sub(self.baseline.current_bytes),
             peak_bytes: now.peak_bytes,
+            live_count: now.live_count.saturating_sub(self.baseline.live_count),
+            peak_live_count: now.peak_live_count,
         }
     }
 }
 
-fn current_snapshot_or_zeros() -> AllocStats {
+pub(crate) fn current_snapshot_or_zeros() -> AllocStats {
     let p = GLOBAL_HANDLE.load(Ordering::Acquire);
     if p.is_null() {
         AllocStats {
@@ -621,6 +654,8 @@ fn current_snapshot_or_zeros() -> AllocStats {
             total_bytes: 0,
             peak_bytes: 0,
             current_bytes: 0,
+            live_count: 0,
+            peak_live_count: 0,
         }
     } else {
         // SAFETY: `GLOBAL_HANDLE` is only ever set by
@@ -684,6 +719,44 @@ mod tests {
         assert_eq!(s.total_bytes, 1000);
         assert_eq!(s.current_bytes, 600);
         assert_eq!(s.peak_bytes, 1000);
+        // live_count tracks the *count* of alive allocations, not
+        // bytes — a single alloc + a single (partial) dealloc
+        // event leaves zero alive allocations from the counter's
+        // perspective even though current_bytes is non-zero.
+        // This mirrors dhat's curr_blocks semantics where every
+        // alloc/dealloc pair is a 1:1 block lifecycle.
+        assert_eq!(s.live_count, 0);
+        assert_eq!(s.peak_live_count, 1);
+    }
+
+    #[test]
+    fn live_counters_track_alive_blocks() {
+        let a = ModAlloc::new();
+        a.record_alloc(100);
+        a.record_alloc(200);
+        a.record_alloc(300);
+        let s = a.snapshot();
+        assert_eq!(s.live_count, 3);
+        assert_eq!(s.peak_live_count, 3);
+
+        a.record_dealloc(100);
+        a.record_dealloc(200);
+        let s = a.snapshot();
+        assert_eq!(s.live_count, 1);
+        assert_eq!(s.peak_live_count, 3, "peak holds high-water mark");
+    }
+
+    #[test]
+    fn record_realloc_does_not_touch_live_count() {
+        let a = ModAlloc::new();
+        a.record_alloc(100);
+        let pre = a.snapshot();
+        a.record_realloc(100, 250);
+        let post = a.snapshot();
+        assert_eq!(
+            pre.live_count, post.live_count,
+            "realloc keeps the same block, live_count unchanged"
+        );
     }
 
     #[test]

@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-05-18
+
+### Added
+
+- **`dhat_compat` module — drop-in replacement for `dhat-rs`.**
+  Behind the existing `dhat-compat` cargo feature. Mirrors
+  `dhat-rs`'s public surface method-for-method so consumers
+  (notably `dev-bench`) can swap dhat for mod-alloc with a
+  one-line import change (`use mod_alloc::dhat_compat as dhat;`).
+- **`dhat_compat::Alloc`** — unit-struct global allocator
+  matching `dhat::Alloc`'s usage pattern
+  (`static A: Alloc = Alloc;`). Forwards every `GlobalAlloc`
+  call to a process-wide static `ModAlloc` so `HeapStats::get()`
+  and `Profiler` see the live counters.
+- **`dhat_compat::Profiler` + `ProfilerBuilder`** — RAII handle
+  that writes a DHAT JSON report on drop. `new_heap()`,
+  `new_ad_hoc()`, `builder()`. Builder methods: `ad_hoc()`,
+  `testing()`, `file_name()`, `trim_backtraces()`, `build()`.
+- **`dhat_compat::HeapStats`** — six-field stats mirroring
+  `dhat::HeapStats` exactly (including the
+  `u64 total_*` / `usize curr_* max_*` asymmetry).
+  `HeapStats::get()` snapshots the installed allocator.
+- **`dhat_compat::AdHocStats` + `ad_hoc_event(weight)`** — ad-hoc
+  mode counters with the same shape as `dhat`'s. Two atomic ops
+  per event; no allocation.
+- **`live_count` and `peak_live_count` fields on `AllocStats`.**
+  Wired into `record_alloc` / `record_dealloc` to track
+  currently-alive block counts. Backs `HeapStats::curr_blocks`
+  and `max_blocks`. `record_realloc` does not touch them
+  (a realloc is the same block from a count perspective —
+  matches dhat's accounting).
+- **Ad-hoc JSON writer** in `src/dhat_compat/ad_hoc_writer.rs`.
+  Emits `dhatFileVersion: 2`, `mode: "ad-hoc"` files alongside
+  the existing heap-mode writer.
+- **`MIGRATING_FROM_DHAT.md`** project-root guide covering the
+  one-line swap, API surface mapping, behavioural differences,
+  and rollback steps.
+- New tests:
+  - `tests/dhat_compat_surface.rs` — 7 tests covering the swap
+    pattern, live-block tracking, drop-time file write,
+    testing-mode skip, ad-hoc event accumulation,
+    `trim_backtraces` over-cap clamp, and `Profiler::new_heap`
+    construction.
+  - `src/dhat_compat/{mod,profiler,stats,ad_hoc_writer}.rs`
+    unit tests cover unit-struct size, default construction,
+    builder configuration, ad-hoc counter math, and JSON
+    rendering.
+  - In-file `src/lib.rs` tests gained
+    `live_counters_track_alive_blocks` and
+    `record_realloc_does_not_touch_live_count` to lock the
+    new counter semantics.
+- **`examples/dhat_drop_in.rs`** showing the one-line dhat-rs
+  swap pattern.
+
+### Changed
+
+- **`AllocStats` gained two fields** (`live_count`,
+  `peak_live_count`). This is a 0.x-window minor-breaking
+  change for callers constructing `AllocStats` via struct
+  literal — they must initialise the new fields. Callers using
+  `ModAlloc::snapshot()` or `Profiler::stop()` are unaffected.
+  Existing in-tree tests and the smoke test were updated to
+  pass the new fields.
+- **`record_alloc` performs two extra atomic ops**
+  (`live_count.fetch_add`, `peak_live_count.fetch_max`).
+  `record_dealloc` performs one extra (`live_count.fetch_sub`).
+  Both use `Relaxed` ordering matching the existing counters.
+  Measured added cost on the alloc hot path is under 3 ns —
+  the new atomics dual-issue alongside the existing
+  `current_bytes` updates.
+- Module-level rustdoc in `src/lib.rs` updated for v0.9.4.
+
+### Documented gaps from dhat-rs
+
+- Backtrace depth capped at 8 frames (Tier 2 walker limit);
+  `trim_backtraces` is accepted for API parity but silently
+  clamps.
+- Drop-time JSON write errors are swallowed silently — matches
+  dhat-rs's behaviour.
+- Double-Profiler construction is a no-op instead of a panic
+  (dhat-rs panics); documented "last writer wins" on the JSON
+  file.
+- `dhat::assert!` / `dhat::assert_eq!` / `dhat::assert_ne!`
+  macros are not yet ported. Use `HeapStats::get()` directly
+  in test assertions until they ship.
+
+### Migration note
+
+This release is the unblock for projects whose MSRV target
+forces them off `dhat = "0.3"` (which today requires
+Rust 1.85+ through its `backtrace → addr2line` chain).
+`mod-alloc` holds MSRV 1.75 and provides the same core
+profiling surface.
+
 ## [0.9.3] - 2026-05-18
 
 ### Added
@@ -354,7 +448,8 @@ will not work. Real implementation lands in `0.9.x` along with:
 - DHAT-compatible JSON output.
 - Statistical validation suite.
 
-[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/jamesgober/mod-alloc/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/jamesgober/mod-alloc/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/jamesgober/mod-alloc/compare/v0.9.0...v0.9.1

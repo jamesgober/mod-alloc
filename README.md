@@ -105,6 +105,30 @@ MOD_ALLOC_BUCKETS=16384 ./your-binary
 Default is 4,096 buckets (~384 KB). Range `[64, 1_048_576]`,
 rounded up to the next power of two.
 
+## Drop-in replacement for dhat-rs
+
+With the `dhat-compat` feature, mod-alloc exposes a
+`dhat_compat` module that mirrors dhat-rs's public surface
+method-for-method. Migrate by changing a single import line:
+
+```rust
+use mod_alloc::dhat_compat as dhat;
+
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
+fn main() {
+    let _profiler = dhat::Profiler::new_heap();
+    // ... work ...
+    // _profiler drops here → writes dhat-heap.json
+}
+```
+
+The full mapping (and documented gaps) lives in
+[`MIGRATING_FROM_DHAT.md`](MIGRATING_FROM_DHAT.md). The
+motivating benefit: mod-alloc holds MSRV 1.75 while dhat-rs
+forces 1.85+ through its `backtrace → addr2line` chain.
+
 ## DHAT-compatible JSON output
 
 With the `dhat-compat` feature enabled, the per-call-site report
@@ -165,7 +189,8 @@ demand.
 | Tier 2 perf optimisation                   | `v0.9.1.1` | planned |
 | Symbolication for reports                  | `v0.9.2`   | shipped |
 | Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | shipped |
-| `dev-bench` integration (drop dhat)        | `v0.9.4`   | planned |
+| dhat-rs drop-in compat surface             | `v0.9.4`   | shipped |
+| `dev-bench` swap (consumer side)           | `v0.9.5`   | planned |
 | Stable API (`1.0`)                         | `v1.0.0`   | planned |
 
 The `1.0` release freezes the public API and the wire format.
