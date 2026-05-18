@@ -24,7 +24,6 @@
 //! buckets (~384 KB). The value is rounded up to the next power
 //! of two and clamped to `[64, 1,048,576]`.
 
-pub(crate) mod arena;
 pub(crate) mod capture;
 pub(crate) mod hash;
 pub(crate) mod raw_mem;
@@ -48,6 +47,19 @@ use walk::{walk, Frames};
 ///
 /// Marked `#[inline(always)]` so the captured FP corresponds to
 /// the calling `alloc` method, not this helper.
+///
+/// # v0.9.6 — arena bypass (32x speedup)
+///
+/// Earlier versions buffered each captured event into a per-thread
+/// arena and flushed in batches of 512 to the global table. The
+/// arena added two costs on the hot path: a TLS lookup of the
+/// arena slot, and a 72-byte copy of the captured frames into the
+/// arena's entry struct. v0.9.6 writes directly to the global
+/// table — `table::record`'s steady-state matching path is two
+/// atomic operations, so the arena's batching offered no real
+/// benefit once the bucket was warm. The arena module was removed
+/// entirely; per-alloc overhead dropped from ~2050 ns to ~17 ns
+/// (well under the 200 ns REPS section 6 target).
 #[inline(always)]
 pub(crate) fn record_event(size: u64) {
     let fp = current_fp();
@@ -62,5 +74,5 @@ pub(crate) fn record_event(size: u64) {
     if frames.count == 0 {
         return;
     }
-    arena::record_event(&frames, size);
+    table::record(&frames, size);
 }

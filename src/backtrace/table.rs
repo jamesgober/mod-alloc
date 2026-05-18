@@ -1,9 +1,12 @@
 //! Global call-site aggregation table.
 //!
 //! Open-addressed, fixed-size, atomic-only hash table allocated
-//! once via raw OS pages. Per-thread arenas flush their captured
-//! events into this table; the public report API drains it into a
-//! `Vec<CallSiteStats>`.
+//! once via raw OS pages. `record_event` writes directly here on
+//! every tracked alloc; the public report API drains it into a
+//! `Vec<CallSiteStats>`. The per-thread arena that v0.9.1–v0.9.5
+//! used as a batching layer was removed in v0.9.6 because the
+//! table's matching-path fast write (two atomic ops) is already
+//! cheap enough that batching added more cost than it saved.
 //!
 //! ## Sizing
 //!
@@ -78,6 +81,12 @@ fn configured_bucket_count() -> usize {
     n.next_power_of_two()
 }
 
+/// Steady-state inline accessor. Folds into the calling
+/// `table::record` body so the fast path (table already
+/// initialised, which is true after the very first event for
+/// the process) becomes three atomic loads with no function-
+/// call boundary.
+#[inline(always)]
 fn ensure_init() -> Option<(*mut Bucket, usize, usize)> {
     let existing = TABLE_BASE.load(Ordering::Acquire);
     if !existing.is_null() {
@@ -85,7 +94,15 @@ fn ensure_init() -> Option<(*mut Bucket, usize, usize)> {
         let mask = TABLE_MASK.load(Ordering::Relaxed);
         return Some((existing, buckets, mask));
     }
+    ensure_init_slow()
+}
 
+/// First-event-per-process slow path. Allocates the table via
+/// raw OS pages and CAS-publishes it. Kept out-of-line so the
+/// `record` hot path stays compact.
+#[cold]
+#[inline(never)]
+fn ensure_init_slow() -> Option<(*mut Bucket, usize, usize)> {
     let buckets = configured_bucket_count();
     let bytes = buckets * BUCKET_SIZE;
     // SAFETY: alloc_pages returns either null or a writable,
@@ -124,6 +141,13 @@ fn ensure_init() -> Option<(*mut Bucket, usize, usize)> {
 }
 
 /// Record one captured event into the global table.
+///
+/// Called from `backtrace::record_event` on every tracked alloc.
+/// Marked `#[inline]` so thin-LTO can stitch the hot path
+/// (record_event → hash_frames → record) into the calling
+/// `GlobalAlloc::alloc` body without a cross-module function
+/// call.
+#[inline]
 pub(crate) fn record(frames: &Frames, size: u64) {
     let count = frames.count as usize;
     if count == 0 {
@@ -202,11 +226,9 @@ pub(crate) fn record(frames: &Frames, size: u64) {
 
 /// Drain the per-call-site table into a `Vec<CallSiteStats>`.
 ///
-/// Flushes the calling thread's arena first so recent events
-/// are visible in the report.
+/// As of v0.9.6, events go straight from `record_event` into the
+/// global table — there is no per-thread arena to flush first.
 pub fn call_sites_report() -> Vec<CallSiteStats> {
-    super::arena::flush_current_thread();
-
     let Some((base, buckets, _mask)) = ensure_init() else {
         return Vec::new();
     };

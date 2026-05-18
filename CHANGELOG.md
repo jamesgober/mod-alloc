@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-05-18
+
+Tier 2 (`backtraces`) perf optimisation. The per-allocation cost
+of inline backtrace capture dropped roughly **32x** on a Windows
+x86_64 dev host (2,051 ns → 56.9 ns total cycle, ≈ 11 ns of
+Tier 2 overhead on top of Tier 1's 45.5 ns). Both tiers now
+clear the REPS section 6 targets with significant headroom.
+
+### Changed
+
+- **Removed the per-thread arena layer.** Captured events go
+  straight from `record_event` into the global aggregation
+  table — `table::record`'s steady-state matching path is two
+  atomic operations, so the arena's batching added cost
+  (one TLS lookup + a 72-byte memcpy into an arena slot +
+  periodic 512-event synchronous flush) without a real benefit
+  once the bucket was warm.
+- **Inlining hints on the hot path.** `table::record` and
+  `current_stack_bounds` are now `#[inline]` / `#[inline(always)]`
+  so thin-LTO stitches the full capture path
+  (`record_event → walk → hash_frames → record`) into the
+  calling `GlobalAlloc::alloc` body with no cross-module
+  function-call boundaries.
+- **Split `ensure_init` into fast/slow paths.** The steady-state
+  inline accessor is three atomic loads; the first-event-per-
+  process slow path (raw-page allocation + CAS publish) is
+  out-of-line via `#[cold] #[inline(never)]`.
+
+### Removed
+
+- `src/backtrace/arena.rs` (and the per-thread `ARENA`
+  thread-local). Dead after the bypass. The
+  `flush_current_thread()` call inside `table::call_sites_report`
+  is removed too — there is nothing to flush.
+- `ENTRIES_PER_ARENA`, `ArenaState`, `ArenaSlot`, and the
+  one arena unit test (`record_and_flush_round_trip`) went with
+  the module.
+
+### Notes
+
+- mod-alloc skipped a `v0.9.5` release for the milestone of the
+  same name (the dev-bench consumer-side swap, which shipped as
+  `dev-bench v0.9.7` instead). `v0.9.5` here is mod-alloc's own
+  next published version, carrying the Tier 2 perf pass.
+- No public API changes. No new external dependencies. MSRV
+  unchanged (`1.75`). The `ModAlloc::call_sites()`
+  /  `symbolicated_report()` / `dhat_json_string()` /
+  `write_dhat_json()` / `dhat_compat::*` surfaces all behave
+  identically; only the internal capture pipeline shrank.
+- Bench numbers in `README.md` updated to the post-optimisation
+  measurements.
+
+[0.9.5]: https://github.com/jamesgober/mod-alloc/compare/v0.9.4...v0.9.5
+
 ## [0.9.4] - 2026-05-18
 
 ### Added
@@ -448,7 +502,7 @@ will not work. Real implementation lands in `0.9.x` along with:
 - DHAT-compatible JSON output.
 - Statistical validation suite.
 
-[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.4...HEAD
+[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.5...HEAD
 [0.9.4]: https://github.com/jamesgober/mod-alloc/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/jamesgober/mod-alloc/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...v0.9.2

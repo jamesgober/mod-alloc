@@ -157,14 +157,17 @@ with `cargo run --release --example bench_overhead`:
 
 | Build                                  | Per alloc + dealloc cycle |
 |----------------------------------------|--------------------------:|
-| Tier 1 only (`counters`, default)      |        **34.9 ns**        |
-| Tier 1 + Tier 2 (`backtraces`)         |       **~1,950 ns**       |
+| Tier 1 only (`counters`, default)      |        **45.5 ns**        |
+| Tier 1 + Tier 2 (`backtraces`, v0.9.5) |        **56.9 ns**        |
+| Tier 1 + Tier 2 (`backtraces`, v0.9.4) |       **~2,050 ns**       |
 
-Tier 1 comes in well under the 50 ns target from the spec
-([`REPS.md`](REPS.md) section 6). Tier 2 is currently above the
-200 ns target in that section; closing that gap is tracked for
-v0.9.6. The Tier 2 path is correct and recursion-safe in the
-current release; the optimisation is a separate, focused pass.
+Both tiers comfortably clear the REPS section 6 targets (Tier 1
+<50 ns, Tier 2 <200 ns of additional overhead). v0.9.5 dropped
+Tier 2 overhead from ~2,000 ns to ~11 ns by removing the
+per-thread arena layer and writing each captured event straight
+to the global aggregation table — `table::record`'s steady-state
+matching path is two atomic operations, so the arena's batching
+no longer paid for itself.
 
 ## Why a new allocation profiler
 
@@ -181,17 +184,17 @@ demand.
 
 ## Status
 
-| Milestone                                  | Version    | State   |
-|--------------------------------------------|------------|---------|
-| Name-claim placeholder                     | `v0.1.0`   | shipped |
-| Real `GlobalAlloc` + Tier 1 counters       | `v0.9.0`   | shipped |
-| Tier 2: inline backtrace capture           | `v0.9.1`   | shipped |
-| Symbolication for reports                  | `v0.9.2`   | shipped |
-| Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | shipped |
-| dhat-rs drop-in compat surface             | `v0.9.4`   | shipped |
-| `dev-bench` swap (consumer side)           | `v0.9.5`   | planned |
-| Tier 2 perf optimisation                   | `v0.9.6`   | planned |
-| Stable API (`1.0`)                         | `v1.0.0`   | planned |
+| Milestone                                  | Version    | State                          |
+|--------------------------------------------|------------|--------------------------------|
+| Name-claim placeholder                     | `v0.1.0`   | shipped                        |
+| Real `GlobalAlloc` + Tier 1 counters       | `v0.9.0`   | shipped                        |
+| Tier 2: inline backtrace capture           | `v0.9.1`   | shipped                        |
+| Symbolication for reports                  | `v0.9.2`   | shipped                        |
+| Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | shipped                        |
+| dhat-rs drop-in compat surface             | `v0.9.4`   | shipped                        |
+| `dev-bench` swap (consumer side)           | n/a        | shipped as `dev-bench v0.9.7`  |
+| Tier 2 perf optimisation                   | `v0.9.5`   | shipped                        |
+| Stable API (`1.0`)                         | `v1.0.0`   | planned                        |
 
 The `1.0` release freezes the public API and the wire format.
 Breaking changes after that require a major bump.

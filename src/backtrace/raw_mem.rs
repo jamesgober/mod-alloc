@@ -1,5 +1,5 @@
-//! Platform-specific raw page allocation, used for the per-thread
-//! arena and the global aggregation table.
+//! Platform-specific raw page allocation, used for the global
+//! aggregation table.
 //!
 //! The backtrace path cannot recursively call `ModAlloc::alloc`
 //! when initialising its own state, so this module bypasses the

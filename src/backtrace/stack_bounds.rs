@@ -35,7 +35,13 @@ thread_local! {
 /// the first call and returning the cached value on subsequent
 /// calls. Returns `None` if the platform is unsupported or the
 /// query failed.
-#[inline]
+///
+/// Marked `#[inline(always)]` so the cache-hit fast path folds
+/// into the calling `record_event` body without a function-call
+/// boundary; the OS query is itself out-of-line via the cfg-
+/// specific `query_os` helper, which only runs on the first call
+/// per thread.
+#[inline(always)]
 pub(crate) fn current_stack_bounds() -> Option<StackBounds> {
     if let Ok(cached) = CACHED.try_with(|c| c.get()) {
         if let Some(b) = cached {

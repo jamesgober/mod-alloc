@@ -47,12 +47,15 @@
 //!
 //! ## Status
 //!
-//! v0.9.1 adds Tier 2 (inline backtrace capture) behind the
-//! `backtraces` feature. v0.9.2 adds symbolication behind the
-//! `symbolicate` feature. v0.9.3 wires up `dhat-compat` to emit
+//! v0.9.1 added Tier 2 (inline backtrace capture) behind the
+//! `backtraces` feature. v0.9.2 added symbolication behind the
+//! `symbolicate` feature. v0.9.3 wired up `dhat-compat` to emit
 //! the per-call-site report as DHAT-format JSON that the upstream
-//! `dh_view.html` viewer loads directly. Default builds still
-//! ship Tier 1 counters only.
+//! `dh_view.html` viewer loads directly. v0.9.4 added the
+//! `dhat_compat` drop-in surface for migrating from `dhat-rs`.
+//! v0.9.5 cut Tier 2 per-allocation overhead by ~32x by removing
+//! the per-thread arena layer. Default builds still ship Tier 1
+//! counters only.
 //!
 //! ## Backtraces (`backtraces` feature)
 //!
