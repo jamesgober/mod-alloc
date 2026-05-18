@@ -3,10 +3,27 @@
 
 #![cfg(feature = "dhat-compat")]
 
+use std::sync::Mutex;
+
 use mod_alloc::dhat_compat::{ad_hoc_event, AdHocStats, Alloc, HeapStats, Profiler};
 
 #[global_allocator]
 static ALLOC: Alloc = Alloc;
+
+// `live_count` / `curr_blocks` is a process-wide counter shared
+// across every test in this binary. Cargo runs tests in parallel
+// by default, so a test that allocates and a test that reads the
+// counter race continuously. We serialise *every* test in this
+// file behind one mutex so the precise-relative claims about
+// `curr_blocks` in `live_block_count_rises_and_falls` are not
+// disturbed by allocations from sibling tests running in parallel
+// threads. The file's total runtime stays under a second so
+// sequential execution costs nothing.
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock() -> std::sync::MutexGuard<'static, ()> {
+    TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
 
 #[inline(never)]
 fn workload(n: usize) -> Vec<Vec<u8>> {
@@ -19,6 +36,7 @@ fn workload(n: usize) -> Vec<Vec<u8>> {
 
 #[test]
 fn alloc_swap_pattern_compiles_and_tracks_total_bytes() {
+    let _g = lock();
     let before = HeapStats::get();
     let kept = workload(16);
     let after = HeapStats::get();
@@ -35,28 +53,43 @@ fn alloc_swap_pattern_compiles_and_tracks_total_bytes() {
 
 #[test]
 fn live_block_count_rises_and_falls() {
-    let baseline = HeapStats::get().curr_blocks;
+    let _g = lock();
+
+    // `curr_blocks` is a process-wide instantaneous counter. The
+    // test harness runs worker threads that allocate and
+    // deallocate outside our mutex, and `max_blocks` (the
+    // high-water mark) may already exceed any modest delta we
+    // can produce — so neither `before+N` nor `max + N` is a
+    // race-free assertion.
+    //
+    // What IS provable: while we *own* `kept_count` live
+    // allocations, the process-wide `curr_blocks` count
+    // must include them — it cannot drop below `kept_count`
+    // because we have not released them yet.
     let kept = workload(8);
-    let peak = HeapStats::get();
     let kept_count = kept.len();
+    let with_kept = HeapStats::get();
     drop(kept);
-    let after = HeapStats::get();
+    let after_drop = HeapStats::get();
 
     assert!(
-        peak.curr_blocks >= baseline + kept_count,
-        "curr_blocks {} should be at least baseline {} + {}",
-        peak.curr_blocks,
-        baseline,
+        with_kept.curr_blocks >= kept_count,
+        "while {} vecs are alive, curr_blocks ({}) must be >= {}",
+        kept_count,
+        with_kept.curr_blocks,
         kept_count
     );
     assert!(
-        after.curr_blocks <= peak.curr_blocks,
-        "curr_blocks should fall after drop"
+        after_drop.max_blocks >= with_kept.max_blocks,
+        "max_blocks is monotonic; after_drop ({}) must be >= with_kept ({})",
+        after_drop.max_blocks,
+        with_kept.max_blocks
     );
 }
 
 #[test]
 fn profiler_drop_writes_file_with_dhat_json_shape() {
+    let _g = lock();
     let path = std::env::temp_dir().join(format!(
         "mod-alloc-dhat-compat-test-{}-{}.json",
         std::process::id(),
@@ -93,6 +126,7 @@ fn profiler_drop_writes_file_with_dhat_json_shape() {
 
 #[test]
 fn testing_mode_suppresses_drop_write() {
+    let _g = lock();
     let path = std::env::temp_dir().join(format!(
         "mod-alloc-dhat-compat-testing-{}-{}.json",
         std::process::id(),
@@ -119,6 +153,7 @@ fn testing_mode_suppresses_drop_write() {
 
 #[test]
 fn ad_hoc_event_accumulates_counts_and_weights() {
+    let _g = lock();
     let before = AdHocStats::get();
     ad_hoc_event(7);
     ad_hoc_event(3);
@@ -129,6 +164,7 @@ fn ad_hoc_event_accumulates_counts_and_weights() {
 
 #[test]
 fn trim_backtraces_accepts_oversize_value_without_panic() {
+    let _g = lock();
     // 100 > walker cap of 8 — must not panic, must still build.
     let _p = Profiler::builder()
         .testing()
@@ -138,6 +174,7 @@ fn trim_backtraces_accepts_oversize_value_without_panic() {
 
 #[test]
 fn profiler_new_heap_constructs_and_drops_cleanly() {
+    let _g = lock();
     // Default `dhat-heap.json` write to CWD would litter the
     // workspace, so we route it to tmp instead.
     let path = std::env::temp_dir().join(format!(

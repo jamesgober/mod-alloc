@@ -163,7 +163,7 @@ with `cargo run --release --example bench_overhead`:
 Tier 1 comes in well under the 50 ns target from the spec
 ([`REPS.md`](REPS.md) section 6). Tier 2 is currently above the
 200 ns target in that section; closing that gap is tracked for
-v0.9.1.1. The Tier 2 path is correct and recursion-safe in the
+v0.9.6. The Tier 2 path is correct and recursion-safe in the
 current release; the optimisation is a separate, focused pass.
 
 ## Why a new allocation profiler
@@ -186,11 +186,11 @@ demand.
 | Name-claim placeholder                     | `v0.1.0`   | shipped |
 | Real `GlobalAlloc` + Tier 1 counters       | `v0.9.0`   | shipped |
 | Tier 2: inline backtrace capture           | `v0.9.1`   | shipped |
-| Tier 2 perf optimisation                   | `v0.9.1.1` | planned |
 | Symbolication for reports                  | `v0.9.2`   | shipped |
 | Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | shipped |
 | dhat-rs drop-in compat surface             | `v0.9.4`   | shipped |
 | `dev-bench` swap (consumer side)           | `v0.9.5`   | planned |
+| Tier 2 perf optimisation                   | `v0.9.6`   | planned |
 | Stable API (`1.0`)                         | `v1.0.0`   | planned |
 
 The `1.0` release freezes the public API and the wire format.
