@@ -48,9 +48,11 @@
 //! ## Status
 //!
 //! v0.9.1 adds Tier 2 (inline backtrace capture) behind the
-//! `backtraces` feature. Default builds still ship Tier 1
-//! counters only. Tier 3 (DHAT-compatible JSON output) lands in
-//! v0.9.3.
+//! `backtraces` feature. v0.9.2 adds symbolication behind the
+//! `symbolicate` feature. v0.9.3 wires up `dhat-compat` to emit
+//! the per-call-site report as DHAT-format JSON that the upstream
+//! `dh_view.html` viewer loads directly. Default builds still
+//! ship Tier 1 counters only.
 //!
 //! ## Backtraces (`backtraces` feature)
 //!
@@ -81,6 +83,9 @@ mod symbolicate;
 
 #[cfg(feature = "symbolicate")]
 pub use symbolicate::{SymbolicatedCallSite, SymbolicatedFrame};
+
+#[cfg(feature = "dhat-compat")]
+mod dhat_json;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -344,6 +349,72 @@ impl ModAlloc {
     #[cfg(feature = "symbolicate")]
     pub fn symbolicated_report(&self) -> Vec<SymbolicatedCallSite> {
         symbolicate::symbolicated_report()
+    }
+
+    /// Render the per-call-site report as a DHAT-compatible JSON
+    /// string.
+    ///
+    /// Available only with the `dhat-compat` cargo feature (which
+    /// implies `backtraces`). When the `symbolicate` feature is
+    /// also active, frame strings carry function names and
+    /// (where available) source file and line; otherwise they
+    /// carry raw hex addresses.
+    ///
+    /// Allocates. Safe to call from non-allocator contexts only
+    /// (ordinary user code outside the global-allocator hook).
+    ///
+    /// The output schema (`dhatFileVersion: 2`, `mode: "rust-heap"`)
+    /// matches the format consumed by the upstream
+    /// `dh_view.html` viewer shipped with Valgrind.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # #[cfg(feature = "dhat-compat")]
+    /// # fn demo() {
+    /// use mod_alloc::ModAlloc;
+    ///
+    /// #[global_allocator]
+    /// static GLOBAL: ModAlloc = ModAlloc::new();
+    ///
+    /// let _v: Vec<u8> = vec![0; 1024];
+    /// let json = GLOBAL.dhat_json_string();
+    /// assert!(json.contains("\"dhatFileVersion\":2"));
+    /// # }
+    /// ```
+    #[cfg(feature = "dhat-compat")]
+    pub fn dhat_json_string(&self) -> String {
+        dhat_json::dhat_json_string()
+    }
+
+    /// Render the per-call-site report and write it to `path` as
+    /// DHAT-compatible JSON.
+    ///
+    /// Available only with the `dhat-compat` cargo feature.
+    /// Mirrors `dhat-rs`'s convention of writing
+    /// `dhat-heap.json` to the current directory; pass that path
+    /// to drop a file the upstream viewer will load directly.
+    ///
+    /// Allocates. Safe to call from non-allocator contexts only.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # #[cfg(feature = "dhat-compat")]
+    /// # fn demo() -> std::io::Result<()> {
+    /// use mod_alloc::ModAlloc;
+    ///
+    /// #[global_allocator]
+    /// static GLOBAL: ModAlloc = ModAlloc::new();
+    ///
+    /// let _v: Vec<u8> = vec![0; 1024];
+    /// GLOBAL.write_dhat_json("dhat-heap.json")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "dhat-compat")]
+    pub fn write_dhat_json<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+        dhat_json::write_dhat_json(path.as_ref())
     }
 }
 

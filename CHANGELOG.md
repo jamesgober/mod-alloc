@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-05-18
+
+### Added
+
+- **`dhat-compat` cargo feature wired up.** Previously a no-op
+  placeholder shipped since v0.9.0, the feature now emits the
+  per-call-site report as DHAT-compatible JSON
+  (`dhatFileVersion: 2`, `mode: "rust-heap"`) that the upstream
+  `dh_view.html` viewer shipped with Valgrind loads directly. No
+  new external dependencies; the JSON writer is hand-rolled.
+- **`ModAlloc::dhat_json_string() -> String`** renders the report
+  as a JSON string. Allocates; call from outside the allocator
+  hook.
+- **`ModAlloc::write_dhat_json(path)`** writes the rendered JSON
+  to `path` (mirrors `dhat-rs`'s `dhat-heap.json` convention).
+  Returns `std::io::Result<()>`.
+- **Frame-string formatting cfg-splits on `symbolicate`.** Without
+  the `symbolicate` feature, frame strings carry raw hex
+  addresses with `<unresolved>` placeholders. With `symbolicate`,
+  the JSON carries function names plus (where the platform
+  supports it) source file and line, with `[inlined]` flags on
+  inlined expansions.
+- **Frame-table deduplication.** The internal builder keeps a
+  `HashMap<String, u32>` so identical frame strings reused across
+  call sites share a single `ftbl` entry. Index 0 is reserved for
+  the literal `"[root]"`.
+- New tests:
+  - `tests/dhat_json_shape.rs`: validates the top-level keys are
+    present, the document starts/ends with object braces, a
+    workload produces at least one program point, and
+    `write_dhat_json` round-trips byte-for-byte with
+    `dhat_json_string`.
+  - `src/dhat_json/writer.rs` unit tests cover JSON string
+    escaping (quote, backslash, newline, low control bytes,
+    multibyte UTF-8 pass-through).
+  - `src/dhat_json/frames.rs` unit tests cover frame-table
+    interning and the raw frame-string format.
+- **`examples/dhat_json.rs`** drops a `dhat-heap.json` file in
+  the current working directory for inspection in the upstream
+  viewer.
+
+### Changed
+
+- Module-level rustdoc in `src/lib.rs` updated to mention Tier 3
+  DHAT JSON output.
+
+### Notes
+
+- The viewer hides time-and-lifetime columns (`tl`, `mb`, `mbk`,
+  etc.) automatically because `mod-alloc` emits `bklt: false`. We
+  do not track per-allocation lifetimes today and will not
+  fabricate values just to populate columns.
+- `eb` and `ebk` (at-end bytes / blocks) are emitted as `0`. The
+  JSON can be written at any point during execution, so there is
+  no meaningful "end" snapshot from our perspective.
+
 ## [0.9.2] - 2026-05-14
 
 ### Added
@@ -298,7 +354,8 @@ will not work. Real implementation lands in `0.9.x` along with:
 - DHAT-compatible JSON output.
 - Statistical validation suite.
 
-[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/jamesgober/mod-alloc/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/jamesgober/mod-alloc/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/jamesgober/mod-alloc/compare/v0.1.0...v0.9.0

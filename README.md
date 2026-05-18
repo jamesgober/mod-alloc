@@ -79,7 +79,7 @@ mod-alloc = { version = "0.9", features = ["dhat-compat"] }   # Tier 3: DHAT JSO
 | `counters`    | Four lock-free counters via `GlobalAlloc` (default)       | shipped (v0.9.0)  |
 | `backtraces`  | Inline FP walk + per-call-site aggregation                | shipped (v0.9.1)  |
 | `symbolicate` | Resolve raw addresses to `(function, file, line)`         | shipped (v0.9.2)  |
-| `dhat-compat` | Emit JSON for the official DHAT viewer                    | planned (v0.9.3)  |
+| `dhat-compat` | Emit JSON for the official DHAT viewer                    | shipped (v0.9.3)  |
 
 ## Backtraces
 
@@ -104,6 +104,27 @@ MOD_ALLOC_BUCKETS=16384 ./your-binary
 
 Default is 4,096 buckets (~384 KB). Range `[64, 1_048_576]`,
 rounded up to the next power of two.
+
+## DHAT-compatible JSON output
+
+With the `dhat-compat` feature enabled, the per-call-site report
+serialises to the JSON shape understood by the upstream
+`dh_view.html` viewer shipped with Valgrind:
+
+```rust
+GLOBAL.write_dhat_json("dhat-heap.json")?;
+```
+
+Combine with `symbolicate` for resolved function names plus file
+and line where available:
+
+```toml
+mod-alloc = { version = "0.9", features = ["symbolicate", "dhat-compat"] }
+```
+
+The JSON writer is hand-rolled — no `serde` / `serde_json`
+dependency. See [`examples/dhat_json.rs`](examples/dhat_json.rs)
+for a complete walk-through.
 
 ## Performance
 
@@ -143,7 +164,7 @@ demand.
 | Tier 2: inline backtrace capture           | `v0.9.1`   | shipped |
 | Tier 2 perf optimisation                   | `v0.9.1.1` | planned |
 | Symbolication for reports                  | `v0.9.2`   | shipped |
-| Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | planned |
+| Tier 3: DHAT-compatible JSON output        | `v0.9.3`   | shipped |
 | `dev-bench` integration (drop dhat)        | `v0.9.4`   | planned |
 | Stable API (`1.0`)                         | `v1.0.0`   | planned |
 
