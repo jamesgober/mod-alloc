@@ -41,7 +41,15 @@ pub(crate) mod report;
 /// underlying debug info did not resolve to a name / location
 /// (stripped binaries, FFI frames into system libraries, etc.).
 /// The raw `address` is always preserved.
+///
+/// # Stability
+///
+/// Marked `#[non_exhaustive]` as of v1.0.0. Future minor
+/// versions may add fields (e.g. column number, symbol kind,
+/// crate-of-origin). Read fields by name; iterate via
+/// [`ModAlloc::symbolicated_report`](crate::ModAlloc::symbolicated_report).
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SymbolicatedFrame {
     /// Original raw return address from the capture path.
     pub address: u64,
@@ -62,7 +70,13 @@ pub struct SymbolicatedFrame {
 ///
 /// Contains the aggregated counters from the raw report plus a
 /// vector of resolved frames in top-of-stack-first order.
+///
+/// # Stability
+///
+/// Marked `#[non_exhaustive]` as of v1.0.0. Future minor
+/// versions may add fields without bumping the major version.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SymbolicatedCallSite {
     /// Allocations attributed to this site.
     pub count: u64,

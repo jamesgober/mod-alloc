@@ -68,18 +68,18 @@ fn main() {
 
 ```toml
 [dependencies]
-mod-alloc = "0.9"                                             # Tier 1: counters (default)
-mod-alloc = { version = "0.9", features = ["backtraces"] }    # Tier 2: call-site capture
-mod-alloc = { version = "0.9", features = ["symbolicate"] }   # + function/file/line names
-mod-alloc = { version = "0.9", features = ["dhat-compat"] }   # Tier 3: DHAT JSON output (v0.9.3)
+mod-alloc = "1"                                           # Tier 1: counters (default)
+mod-alloc = { version = "1", features = ["backtraces"] }  # Tier 2: call-site capture
+mod-alloc = { version = "1", features = ["symbolicate"] } # + function/file/line names
+mod-alloc = { version = "1", features = ["dhat-compat"] } # DHAT JSON output + dhat-rs drop-in
 ```
 
-| Feature       | What it adds                                              | Status            |
-|---------------|-----------------------------------------------------------|-------------------|
-| `counters`    | Four lock-free counters via `GlobalAlloc` (default)       | shipped (v0.9.0)  |
-| `backtraces`  | Inline FP walk + per-call-site aggregation                | shipped (v0.9.1)  |
-| `symbolicate` | Resolve raw addresses to `(function, file, line)`         | shipped (v0.9.2)  |
-| `dhat-compat` | Emit JSON for the official DHAT viewer                    | shipped (v0.9.3)  |
+| Feature       | What it adds                                                        | Since   |
+|---------------|---------------------------------------------------------------------|---------|
+| `counters`    | Four lock-free counters via `GlobalAlloc` (default)                 | `0.9.0` |
+| `backtraces`  | Inline FP walk + per-call-site aggregation (~11 ns overhead)        | `0.9.1` |
+| `symbolicate` | Resolve raw addresses to `(function, file, line)`                   | `0.9.2` |
+| `dhat-compat` | DHAT JSON output + `dhat_compat` drop-in surface for `dhat-rs`      | `0.9.3` |
 
 ## Backtraces
 
@@ -194,10 +194,11 @@ demand.
 | dhat-rs drop-in compat surface             | `v0.9.4`   | shipped                        |
 | `dev-bench` swap (consumer side)           | n/a        | shipped as `dev-bench v0.9.7`  |
 | Tier 2 perf optimisation                   | `v0.9.5`   | shipped                        |
-| Stable API (`1.0`)                         | `v1.0.0`   | planned                        |
+| **Stable API**                             | **`v1.0.0`** | **shipped**                  |
 
-The `1.0` release freezes the public API and the wire format.
-Breaking changes after that require a major bump.
+`v1.0.0` freezes the public API and the wire format. Breaking
+changes after `1.0` require a major version bump per Semantic
+Versioning.
 
 ## Out of scope
 

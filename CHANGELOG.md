@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-18
+
+**Stable API release.** The public surface is now frozen.
+Breaking changes after `1.0.0` require a major version bump
+per Semantic Versioning. Bench targets from REPS section 6 are
+all met with significant headroom; one real downstream consumer
+(`dev-bench v0.9.7`) has been live on crates.io for a day with
+zero friction.
+
+### Added
+
+- **`#[non_exhaustive]`** on the public structs and enums most
+  likely to gain fields in future minor versions:
+  - `AllocStats`
+  - `CallSiteStats` (behind `backtraces`)
+  - `SymbolicatedFrame`, `SymbolicatedCallSite` (behind
+    `symbolicate`)
+  - `dhat_compat::Mode` (behind `dhat-compat`)
+
+  Reading these types' fields by name is fully stable. Future
+  minor versions may add fields without bumping the major
+  version. Constructing via struct literal from outside the
+  crate is no longer supported for the marked types — use
+  [`Default::default`] (newly derived where applicable) and
+  mutate named fields, or consume snapshots from the API
+  surfaces that produce them
+  ([`ModAlloc::snapshot`], [`Profiler::stop`],
+  [`ModAlloc::call_sites`], [`ModAlloc::symbolicated_report`]).
+- **`Default` derived** on `AllocStats` and `CallSiteStats` to
+  give callers a non-literal construction path.
+
+### Stability summary
+
+The following surfaces are frozen at v1.0.0:
+
+- **Top level** (always available):
+  `ModAlloc`, `AllocStats`, `Profiler`
+- **`backtraces` feature**:
+  `CallSiteStats`, `ModAlloc::call_sites`
+- **`symbolicate` feature**:
+  `SymbolicatedFrame`, `SymbolicatedCallSite`,
+  `ModAlloc::symbolicated_report`
+- **`dhat-compat` feature**:
+  `dhat_compat::Alloc`, `dhat_compat::Profiler`,
+  `dhat_compat::ProfilerBuilder`, `dhat_compat::Mode`,
+  `dhat_compat::HeapStats`, `dhat_compat::AdHocStats`,
+  `dhat_compat::ad_hoc_event`,
+  `ModAlloc::dhat_json_string`, `ModAlloc::write_dhat_json`
+- **Environment variables**: `MOD_ALLOC_BUCKETS`
+- **JSON wire format**: `dhatFileVersion: 2`, `mode: "rust-heap"`
+  / `"ad-hoc"`. Output remains loadable by upstream `dh_view.html`.
+
+`dhat_compat::HeapStats` and `dhat_compat::AdHocStats` are
+**intentionally exhaustive** so the `use mod_alloc::dhat_compat as dhat;`
+drop-in pattern keeps working with code written against
+`dhat-rs`'s shape — they mirror that crate's fields
+one-for-one and adding `#[non_exhaustive]` here would break the
+drop-in claim.
+
+### Bench
+
+Final benchmark numbers on a Windows x86_64 dev host (held from
+v0.9.5):
+
+| Build                             | Per alloc + dealloc cycle |
+|-----------------------------------|--------------------------:|
+| Tier 1 only (`counters`, default) |                **45.5 ns**|
+| Tier 1 + Tier 2 (`backtraces`)    |                **62.3 ns**|
+
+Both tiers clear REPS section 6 targets with significant
+headroom (Tier 1 target <50 ns total; Tier 2 target <200 ns of
+additional overhead).
+
+### Migration from 0.9.x
+
+For most callers — **no changes required.** All public methods
+and field names are unchanged. The `#[non_exhaustive]`
+additions only affect code that constructed
+`AllocStats` / `CallSiteStats` / `SymbolicatedFrame` /
+`SymbolicatedCallSite` / `dhat_compat::Mode` via struct-literal
+syntax from outside the crate. Switch those sites to
+`Default::default()` + named-field assignment, or get the value
+from the appropriate API (`snapshot`, `call_sites`, etc.).
+
+`dhat_compat::HeapStats` / `AdHocStats` construction is
+unchanged.
+
+[1.0.0]: https://github.com/jamesgober/mod-alloc/compare/v0.9.5...v1.0.0
+
 ## [0.9.5] - 2026-05-18
 
 Tier 2 (`backtraces`) perf optimisation. The per-allocation cost
@@ -502,7 +591,7 @@ will not work. Real implementation lands in `0.9.x` along with:
 - DHAT-compatible JSON output.
 - Statistical validation suite.
 
-[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/jamesgober/mod-alloc/compare/v1.0.0...HEAD
 [0.9.4]: https://github.com/jamesgober/mod-alloc/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/jamesgober/mod-alloc/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/jamesgober/mod-alloc/compare/v0.9.1...v0.9.2

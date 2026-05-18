@@ -32,14 +32,20 @@ fn smoke_profiler_round_trip() {
 
 #[test]
 fn smoke_stats_copy_and_eq() {
-    let s = AllocStats {
-        alloc_count: 5,
-        total_bytes: 100,
-        peak_bytes: 80,
-        current_bytes: 40,
-        live_count: 2,
-        peak_live_count: 3,
-    };
+    // `AllocStats` is `#[non_exhaustive]` as of v1.0.0; construct
+    // via `Default` and mutate named fields. This is the supported
+    // API surface — direct snapshot consumers get their stats from
+    // `ModAlloc::snapshot()` or `Profiler::stop()`.
+    let mut s = AllocStats::default();
+    s.alloc_count = 5;
+    s.total_bytes = 100;
+    s.peak_bytes = 80;
+    s.current_bytes = 40;
+    s.live_count = 2;
+    s.peak_live_count = 3;
+
     let t = s;
     assert_eq!(s, t);
+    assert_eq!(s.alloc_count, 5);
+    assert_eq!(s.peak_live_count, 3);
 }

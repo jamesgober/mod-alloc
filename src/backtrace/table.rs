@@ -41,9 +41,19 @@ const MAX_BUCKETS: usize = 1 << 20; // 1,048,576
 ///
 /// Frames are raw return addresses, top of stack first. The
 /// `frames[..frame_count]` slice is the captured trace; the rest
-/// is zero. Symbolication happens at report-generation time (lands
-/// in `v0.9.2`).
-#[derive(Debug, Clone, Copy)]
+/// is zero. Symbolication happens at report-generation time
+/// (shipped in v0.9.2 behind the `symbolicate` feature).
+///
+/// # Stability
+///
+/// Marked `#[non_exhaustive]` as of v1.0.0. New counter fields
+/// (e.g. per-bucket high-water marks) may be added in future
+/// minor versions without bumping the major version. Reading
+/// fields by name is fully stable. Iterate via
+/// [`ModAlloc::call_sites`](crate::ModAlloc::call_sites) rather
+/// than constructing literals.
+#[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct CallSiteStats {
     /// Raw return addresses, top of stack first.
     pub frames: [u64; 8],

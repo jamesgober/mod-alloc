@@ -47,15 +47,23 @@
 //!
 //! ## Status
 //!
-//! v0.9.1 added Tier 2 (inline backtrace capture) behind the
-//! `backtraces` feature. v0.9.2 added symbolication behind the
-//! `symbolicate` feature. v0.9.3 wired up `dhat-compat` to emit
-//! the per-call-site report as DHAT-format JSON that the upstream
-//! `dh_view.html` viewer loads directly. v0.9.4 added the
-//! `dhat_compat` drop-in surface for migrating from `dhat-rs`.
-//! v0.9.5 cut Tier 2 per-allocation overhead by ~32x by removing
-//! the per-thread arena layer. Default builds still ship Tier 1
-//! counters only.
+//! **v1.0.0 — Stable API.** The public surface is frozen.
+//! Breaking changes after `1.0.0` require a major version bump
+//! per Semantic Versioning.
+//!
+//! Path to `1.0.0`:
+//!
+//! - `v0.9.0`: Real `GlobalAlloc` impl + Tier 1 counters.
+//! - `v0.9.1`: Tier 2 inline backtrace capture (`backtraces`).
+//! - `v0.9.2`: Symbolication for reports (`symbolicate`).
+//! - `v0.9.3`: DHAT-compatible JSON output (`dhat-compat`).
+//! - `v0.9.4`: `dhat_compat` drop-in surface for `dhat-rs`.
+//! - `v0.9.5`: Tier 2 per-allocation overhead cut ~32x by
+//!   removing the per-thread arena layer.
+//! - `v1.0.0`: `#[non_exhaustive]` on the data structs likely
+//!   to gain fields; public surface frozen.
+//!
+//! Default builds ship Tier 1 counters only.
 //!
 //! ## Backtraces (`backtraces` feature)
 //!
@@ -531,26 +539,24 @@ unsafe impl GlobalAlloc for ModAlloc {
 /// ```
 /// use mod_alloc::AllocStats;
 ///
-/// let stats = AllocStats {
-///     alloc_count: 10,
-///     total_bytes: 1024,
-///     peak_bytes: 512,
-///     current_bytes: 256,
-///     live_count: 4,
-///     peak_live_count: 7,
-/// };
+/// // Construct via Default (literal construction is closed off as
+/// // of v1.0 — see "Stability" below).
+/// let mut stats = AllocStats::default();
+/// stats.alloc_count = 10;
+/// stats.total_bytes = 1024;
 /// assert_eq!(stats.alloc_count, 10);
 /// ```
 ///
-/// # Version note
+/// # Stability
 ///
-/// `live_count` and `peak_live_count` were added in v0.9.4 to
-/// support dhat-rs's `HeapStats` shape via the `dhat-compat`
-/// feature. Callers constructing `AllocStats` via struct literal
-/// must initialise the new fields; callers that only consume
-/// `AllocStats` via [`ModAlloc::snapshot`] or
-/// [`Profiler::stop`] are unaffected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Marked `#[non_exhaustive]` as of v1.0.0. New counter fields may
+/// be added in future minor versions without bumping the major
+/// version. Construct via [`AllocStats::default`] (or consume
+/// snapshots from [`ModAlloc::snapshot`] / [`Profiler::stop`])
+/// rather than struct-literal syntax. Reading individual fields by
+/// name is fully stable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub struct AllocStats {
     /// Number of allocations performed.
     pub alloc_count: u64,

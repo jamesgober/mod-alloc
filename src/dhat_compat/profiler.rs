@@ -10,7 +10,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Profiler mode — heap-allocation tracking or ad-hoc event
 /// counting. Pick at construction via [`Profiler::new_heap`] /
 /// [`Profiler::new_ad_hoc`] or via [`ProfilerBuilder`].
+///
+/// # Stability
+///
+/// Marked `#[non_exhaustive]` as of v1.0.0. Future minor
+/// versions may add new modes (e.g. event-stream output)
+/// without bumping the major version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Mode {
     /// Heap allocation profiling (default).
     Heap,
