@@ -5,7 +5,7 @@
 //! when dropped, unless built with `.testing()`.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Profiler mode — heap-allocation tracking or ad-hoc event
 /// counting. Pick at construction via [`Profiler::new_heap`] /
@@ -101,16 +101,25 @@ impl Profiler {
         // re-entry (dhat-rs does) because that surprise is hard to
         // recover from in downstream test harnesses; document
         // "last writer wins" instead.
-        PROFILER_ACTIVE.store(true, Ordering::Release);
+        PROFILERS_ALIVE.fetch_add(1, Ordering::Relaxed);
         Self { config }
     }
 }
 
-static PROFILER_ACTIVE: AtomicBool = AtomicBool::new(false);
+// Number of live `Profiler`s. A count rather than a flag so that, with
+// two Profilers alive, dropping one does not stop call-site recording
+// for the other.
+static PROFILERS_ALIVE: AtomicUsize = AtomicUsize::new(0);
+
+/// `true` while at least one [`Profiler`] is alive.
+#[inline(always)]
+pub(crate) fn is_active() -> bool {
+    PROFILERS_ALIVE.load(Ordering::Relaxed) != 0
+}
 
 impl Drop for Profiler {
     fn drop(&mut self) {
-        PROFILER_ACTIVE.store(false, Ordering::Release);
+        PROFILERS_ALIVE.fetch_sub(1, Ordering::Relaxed);
 
         if self.config.testing {
             return;
@@ -200,12 +209,14 @@ mod tests {
 
     #[test]
     fn builder_defaults_to_heap_mode() {
-        let p = Profiler::builder().build();
+        // `testing()` so the drop does not write dhat-heap.json into
+        // the working directory.
+        let p = Profiler::builder().testing().build();
         assert_eq!(p.config.mode, Mode::Heap);
         // testing-mode skip on drop
         let _t = Profiler::builder().testing().build();
-        // both drop here; testing-mode skip prevents the second
-        // from writing to CWD.
+        // both drop here; testing mode keeps either
+        // from writing to the working directory.
     }
 
     #[test]

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-09
+
+`dhat_compat::Alloc` stops recording call sites when no `Profiler` is
+alive.
+
+### Changed
+
+- **`dhat_compat::Alloc` records call sites only while a
+  `dhat_compat::Profiler` is alive.** The per-site table is only ever
+  written out by a Profiler (as `dhat-heap.json`), so walking frames
+  for every allocation outside one was pure overhead, and
+  counting-only users such as `dev-bench`'s allocation tracking paid
+  for data nothing read. It also matches dhat-rs, which records nothing
+  outside a Profiler. The counters behind `HeapStats::get()` are
+  unchanged and always on. Measured on x86_64 Windows, release build,
+  64-byte alloc + free: about 59.5 ns before and 50.5 ns after without
+  a Profiler; unchanged (about 59.5 ns) with one. `ModAlloc` used
+  directly keeps recording every call site as before, at the same cost.
+- Live Profilers are counted, so with two alive, dropping one no longer
+  stops recording for the other.
+
+### Fixed
+
+- A unit test built a non-testing `Profiler`, so `cargo test` wrote
+  `dhat-heap.json` into the working directory.
+
+### Documentation
+
+- `dhat_compat` module docs describe what is recorded when.
+
+[1.0.1]: https://github.com/jamesgober/mod-alloc/compare/v1.0.0...v1.0.1
+
 ## [1.0.0] - 2026-05-18
 
 **Stable API release.** The public surface is now frozen.

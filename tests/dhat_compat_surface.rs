@@ -199,3 +199,68 @@ fn profiler_new_heap_constructs_and_drops_cleanly() {
         let _p = Profiler::builder().testing().build();
     }
 }
+
+/// Sum of call-site events recorded so far (process-wide table).
+fn recorded_site_events() -> u64 {
+    mod_alloc::ModAlloc::new()
+        .call_sites()
+        .iter()
+        .map(|c| c.count)
+        .sum()
+}
+
+#[test]
+fn call_sites_are_recorded_only_while_a_profiler_is_alive() {
+    let _g = lock();
+
+    // No Profiler: counters move, the call-site table does not.
+    let sites_before = recorded_site_events();
+    let stats_before = HeapStats::get();
+    let kept = workload(64);
+    let stats_after = HeapStats::get();
+    drop(kept);
+    assert!(stats_after.total_blocks >= stats_before.total_blocks + 64);
+    assert_eq!(
+        recorded_site_events(),
+        sites_before,
+        "call sites were recorded without a live Profiler"
+    );
+
+    // With a Profiler: the workload's allocations are attributed.
+    let with_profiler = {
+        let _p = Profiler::builder().testing().build();
+        let kept = workload(64);
+        let n = recorded_site_events();
+        drop(kept);
+        n
+    };
+    assert!(
+        with_profiler >= sites_before + 64,
+        "expected at least 64 new call-site events, got {}",
+        with_profiler - sites_before
+    );
+
+    // Dropping the Profiler stops recording again.
+    let after_drop = recorded_site_events();
+    let kept = workload(64);
+    drop(kept);
+    assert_eq!(recorded_site_events(), after_drop);
+}
+
+#[test]
+fn recording_continues_while_any_profiler_is_alive() {
+    let _g = lock();
+    let first = Profiler::builder().testing().build();
+    let second = Profiler::builder().testing().build();
+    drop(first);
+    // `second` is still alive, so allocations are still attributed.
+    let before = recorded_site_events();
+    let kept = workload(32);
+    let after = recorded_site_events();
+    drop(kept);
+    drop(second);
+    assert!(
+        after >= before + 32,
+        "recording stopped when only one of two Profilers dropped"
+    );
+}

@@ -22,6 +22,14 @@
 //! # }
 //! ```
 //!
+//! ## What is recorded when
+//!
+//! The counters behind [`HeapStats::get`] are always on. Call sites
+//! (the per-site table written to `dhat-heap.json`) are recorded only
+//! while at least one [`Profiler`] is alive, as in dhat-rs. Outside a
+//! Profiler the allocator skips the frame walk, so counting-only use
+//! (such as `dev-bench`'s allocation tracking) does not pay for it.
+//!
 //! ## Differences from dhat-rs
 //!
 //! Documented in `MIGRATING_FROM_DHAT.md`. Summary:
@@ -44,6 +52,8 @@ mod profiler;
 mod stats;
 
 pub use profiler::{Mode, Profiler, ProfilerBuilder};
+
+pub(crate) use profiler::is_active as profiler_active;
 pub use stats::{ad_hoc_event, AdHocStats, HeapStats};
 
 /// Drop-in replacement for `dhat::Alloc`.
@@ -84,12 +94,16 @@ impl Default for Alloc {
 }
 
 // Process-wide tracking allocator that all `Alloc` instances
-// delegate to. Hosting it as a `static` (rather than per-`Alloc`)
+// delegate to. It records call sites only while a `Profiler` is alive:
+// the per-site table is only ever written out by a Profiler (as
+// `dhat-heap.json`), and dhat-rs likewise records nothing outside one.
+// Without a Profiler the counters behind `HeapStats::get()` stay exact
+// and the frame walk is skipped. Hosting it as a `static` (rather than per-`Alloc`)
 // is necessary because `Alloc` itself is a zero-sized type — it
 // has no place to put atomic counters — and because dhat-rs's
 // pattern uses literal `dhat::Alloc` values in `static` position
 // without any constructor call.
-static INNER: crate::ModAlloc = crate::ModAlloc::new();
+static INNER: crate::ModAlloc = crate::ModAlloc::new_profiler_gated();
 
 // SAFETY: `Alloc` is a thin forwarding wrapper around `INNER`,
 // which is a `'static` `ModAlloc`. Every `GlobalAlloc` method

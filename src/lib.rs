@@ -179,6 +179,11 @@ pub struct ModAlloc {
     current_bytes: AtomicU64,
     live_count: AtomicU64,
     peak_live_count: AtomicU64,
+    // `true` only for the allocator behind `dhat_compat::Alloc`: call
+    // sites are then recorded only while a `dhat_compat::Profiler` is
+    // alive, the only time that data is ever written out.
+    #[cfg(feature = "dhat-compat")]
+    sites_need_profiler: bool,
 }
 
 impl ModAlloc {
@@ -205,6 +210,32 @@ impl ModAlloc {
             current_bytes: AtomicU64::new(0),
             live_count: AtomicU64::new(0),
             peak_live_count: AtomicU64::new(0),
+            #[cfg(feature = "dhat-compat")]
+            sites_need_profiler: false,
+        }
+    }
+
+    /// Allocator for `dhat_compat::Alloc`: like [`ModAlloc::new`], but
+    /// call sites are recorded only while a `dhat_compat::Profiler`
+    /// is alive.
+    #[cfg(feature = "dhat-compat")]
+    pub(crate) const fn new_profiler_gated() -> Self {
+        let mut a = Self::new();
+        a.sites_need_profiler = true;
+        a
+    }
+
+    /// Whether this allocation event should record its call site.
+    #[cfg(feature = "backtraces")]
+    #[inline(always)]
+    fn records_sites(&self) -> bool {
+        #[cfg(feature = "dhat-compat")]
+        {
+            !self.sites_need_profiler || dhat_compat::profiler_active()
+        }
+        #[cfg(not(feature = "dhat-compat"))]
+        {
+            true
         }
     }
 
@@ -473,7 +504,9 @@ unsafe impl GlobalAlloc for ModAlloc {
                 self.record_alloc(size);
                 self.register_self();
                 #[cfg(feature = "backtraces")]
-                backtrace::record_event(size);
+                if self.records_sites() {
+                    backtrace::record_event(size);
+                }
             }
         }
         ptr
@@ -491,7 +524,9 @@ unsafe impl GlobalAlloc for ModAlloc {
                 self.record_alloc(size);
                 self.register_self();
                 #[cfg(feature = "backtraces")]
-                backtrace::record_event(size);
+                if self.records_sites() {
+                    backtrace::record_event(size);
+                }
             }
         }
         ptr
@@ -523,7 +558,9 @@ unsafe impl GlobalAlloc for ModAlloc {
                 // Per dhat semantics: realloc records as one event
                 // attributed to `new_size` (including shrinks).
                 #[cfg(feature = "backtraces")]
-                backtrace::record_event(new_size as u64);
+                if self.records_sites() {
+                    backtrace::record_event(new_size as u64);
+                }
             }
         }
         new_ptr
