@@ -51,20 +51,63 @@ impl HeapStats {
     /// Snapshot the current heap statistics from the installed
     /// allocator.
     ///
-    /// If no [`crate::dhat_compat::Alloc`] (or [`crate::ModAlloc`])
-    /// is installed as `#[global_allocator]` and no allocation has
-    /// occurred yet, all fields are zero.
+    /// While a [`crate::dhat_compat::Profiler`] is alive, the figures
+    /// cover only the profiling session, as in dhat-rs: `total_*`
+    /// count allocations since the first live Profiler was built,
+    /// `curr_*` are the change in live blocks and bytes since then,
+    /// and `max_*` are the peaks reached during the session above
+    /// what was live when it began. With no Profiler alive, the
+    /// figures cover the whole process. (Before 1.1.0 they always
+    /// covered the whole process.)
+    ///
+    /// If neither [`crate::dhat_compat::Alloc`] nor
+    /// [`crate::ModAlloc`] is the `#[global_allocator]`, all fields
+    /// are zero.
     pub fn get() -> Self {
-        let snap = crate::current_snapshot_or_zeros();
+        let session = super::profiler::lock_session();
+        let Some(handle) = crate::installed_handle() else {
+            return Self::from_stats(&crate::zero_stats());
+        };
+        let snap = handle.snapshot();
+        if !session.is_open() {
+            return Self::from_stats(&snap);
+        }
+        let base = session.baseline;
+        let (peak_bytes, peak_live) = match session.window {
+            Some(slot) => handle.window_peaks(slot),
+            None => (snap.peak_bytes, snap.peak_live_count),
+        };
+        drop(session);
+        let curr_bytes = snap.current_bytes.saturating_sub(base.current_bytes);
+        let curr_blocks = snap.live_count.saturating_sub(base.live_count);
+        Self {
+            total_blocks: snap.alloc_count.saturating_sub(base.alloc_count),
+            total_bytes: snap.total_bytes.saturating_sub(base.total_bytes),
+            curr_blocks: to_usize(curr_blocks),
+            curr_bytes: to_usize(curr_bytes),
+            max_blocks: to_usize(peak_live.saturating_sub(base.live_count).max(curr_blocks)),
+            max_bytes: to_usize(
+                peak_bytes
+                    .saturating_sub(base.current_bytes)
+                    .max(curr_bytes),
+            ),
+        }
+    }
+
+    fn from_stats(snap: &crate::AllocStats) -> Self {
         Self {
             total_blocks: snap.alloc_count,
             total_bytes: snap.total_bytes,
-            curr_blocks: snap.live_count as usize,
-            curr_bytes: snap.current_bytes as usize,
-            max_blocks: snap.peak_live_count as usize,
-            max_bytes: snap.peak_bytes as usize,
+            curr_blocks: to_usize(snap.live_count),
+            curr_bytes: to_usize(snap.current_bytes),
+            max_blocks: to_usize(snap.peak_live_count),
+            max_bytes: to_usize(snap.peak_bytes),
         }
     }
+}
+
+fn to_usize(v: u64) -> usize {
+    usize::try_from(v).unwrap_or(usize::MAX)
 }
 
 /// Ad-hoc-mode statistics snapshot. Mirrors `dhat::AdHocStats`.

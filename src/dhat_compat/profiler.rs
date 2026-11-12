@@ -6,6 +6,9 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard};
+
+use crate::{AllocStats, ModAlloc};
 
 /// Profiler mode — heap-allocation tracking or ad-hoc event
 /// counting. Pick at construction via [`Profiler::new_heap`] /
@@ -101,9 +104,54 @@ impl Profiler {
         // re-entry (dhat-rs does) because that surprise is hard to
         // recover from in downstream test harnesses; document
         // "last writer wins" instead.
+        let mut session = lock_session();
+        if session.alive == 0 {
+            // First live Profiler: `HeapStats` counts from here.
+            let handle = crate::installed_handle();
+            session.window = handle.and_then(ModAlloc::open_window);
+            session.baseline = handle.map_or_else(crate::zero_stats, ModAlloc::snapshot);
+            session.handle = handle;
+        }
+        session.alive += 1;
         PROFILERS_ALIVE.fetch_add(1, Ordering::Relaxed);
+        drop(session);
         Self { config }
     }
+}
+
+// The profiling session shared by all live `Profiler`s: it starts
+// when the first one is built and ends when the last one drops.
+pub(crate) struct Session {
+    alive: usize,
+    pub(crate) handle: Option<&'static ModAlloc>,
+    pub(crate) baseline: AllocStats,
+    pub(crate) window: Option<usize>,
+}
+
+impl Session {
+    pub(crate) fn is_open(&self) -> bool {
+        self.alive != 0
+    }
+}
+
+static SESSION: Mutex<Session> = Mutex::new(Session {
+    alive: 0,
+    handle: None,
+    baseline: AllocStats {
+        alloc_count: 0,
+        total_bytes: 0,
+        peak_bytes: 0,
+        current_bytes: 0,
+        live_count: 0,
+        peak_live_count: 0,
+    },
+    window: None,
+});
+
+// The session state is plain data that every holder leaves
+// consistent, so a poisoned lock is safe to reuse.
+pub(crate) fn lock_session() -> MutexGuard<'static, Session> {
+    SESSION.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 // Number of live `Profiler`s. A count rather than a flag so that, with
@@ -119,7 +167,16 @@ pub(crate) fn is_active() -> bool {
 
 impl Drop for Profiler {
     fn drop(&mut self) {
-        PROFILERS_ALIVE.fetch_sub(1, Ordering::Relaxed);
+        {
+            let mut session = lock_session();
+            session.alive = session.alive.saturating_sub(1);
+            if session.alive == 0 {
+                if let (Some(handle), Some(slot)) = (session.handle, session.window.take()) {
+                    handle.close_window(slot);
+                }
+            }
+            PROFILERS_ALIVE.fetch_sub(1, Ordering::Relaxed);
+        }
 
         if self.config.testing {
             return;

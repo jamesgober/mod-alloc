@@ -6,8 +6,9 @@
 //! process-wide table keyed by frame hash, and exposes the result
 //! via [`ModAlloc::call_sites`](crate::ModAlloc::call_sites).
 //!
-//! Symbolication (resolving frame addresses to function names)
-//! lands in `v0.9.2`. DHAT-format JSON output lands in `v0.9.3`.
+//! Symbolication (resolving frame addresses to function names) is
+//! behind the `symbolicate` feature; DHAT-format JSON output is
+//! behind `dhat-compat`.
 //!
 //! ## Requirements
 //!
