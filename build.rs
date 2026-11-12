@@ -1,7 +1,7 @@
 //! mod-alloc build script.
 //!
-//! Approved exception per `.dev/DIRECTIVES.md` section 2.1. The
-//! crate does not generally use `build.rs`. This script exists
+//! Approved exception: the crate does not generally use
+//! `build.rs`. This script exists
 //! solely to detect whether the user's toolchain has frame
 //! pointers enabled when the `backtraces` feature is on, and to
 //! emit a `cargo:warning=` directive if not.
