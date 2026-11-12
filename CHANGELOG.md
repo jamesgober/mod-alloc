@@ -438,8 +438,8 @@ profiling surface.
 - **Per-process address cache** in `symbolicate::report` keyed by
   raw `u64` address. Cache miss runs the platform symbolicator
   once; subsequent calls reuse the cached `Vec<SymbolicatedFrame>`.
-- **Approved external-dep exception** in `.dev/DIRECTIVES.md`
-  section 2.2 documenting the `symbolicate` feature's deps
+- **Approved external-dep exception** documenting the
+  `symbolicate` feature's deps
   (`addr2line`, `object`, `rustc-demangle`, `pdb`, plus a
   pinned `uuid = "=1.10.0"` to hold MSRV 1.75 against `pdb`'s
   latest transitive `uuid` 1.x).
@@ -509,8 +509,7 @@ profiling surface.
   the next power of two and clamped to `[64, 1_048_576]`.
 - **`build.rs`** (one-off approved exception): warns at compile
   time when `RUSTFLAGS` is missing `-C force-frame-pointers=yes`
-  and the `backtraces` feature is on. See
-  `.dev/DIRECTIVES.md` section 2.1 for the documented exception.
+  and the `backtraces` feature is on.
 - **`.cargo/config.toml`** in the crate root enables frame
   pointers for the crate's own builds so the test suite and
   examples produce useful traces. Downstream consumers must
@@ -661,8 +660,7 @@ this is missing.
   on four shared counters instead. Per-thread buffering becomes
   load-bearing in v0.9.1 when backtrace state (32-64 bytes per
   allocation) would otherwise serialise on the global path; for
-  four `u64` counters the indirection is not warranted yet. See
-  `.dev/DESIGN.md` section 2 for the full rationale.
+  four `u64` counters the indirection is not warranted yet.
 - **`backtraces` and `dhat-compat` features are no-ops in v0.9.0.**
   They remain defined in `Cargo.toml` so build matrices stay green
   and downstream callers can opt in once the features ship. Real

@@ -7,8 +7,7 @@
 //!
 //! ## Schema
 //!
-//! See `.dev/DESIGN_v0.9.3.md` for the locked field-by-field
-//! schema. Summary:
+//! The field-by-field schema is locked. Summary:
 //!
 //! - `dhatFileVersion: 2`, `mode: "rust-heap"`, `verb: "Allocated"`.
 //! - `bklt: false`, `bkacc: false` — we do not track allocation

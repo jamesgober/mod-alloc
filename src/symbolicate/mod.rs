@@ -7,8 +7,7 @@
 //!
 //! ## Dependencies
 //!
-//! See `.dev/DIRECTIVES.md` section 2.2 for the approved external-
-//! dep exception. Default builds, the `counters` feature, and
+//! This feature is an approved external-dep exception. Default builds, the `counters` feature, and
 //! the `backtraces` feature remain zero-runtime-dep. The
 //! `symbolicate` feature pulls in:
 //!

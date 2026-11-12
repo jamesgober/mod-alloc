@@ -6,8 +6,7 @@
 //! captured return addresses.
 //!
 //! Safety strategy: every dereference is preceded by null,
-//! alignment, in-range, and monotonicity checks (see
-//! `.dev/DESIGN_v0.9.1.md` section 1). Any check failure stops
+//! alignment, in-range, and monotonicity checks. Any check failure stops
 //! the walk and returns the frames captured so far. The walk is
 //! also bounded to exactly 8 iterations as a final safety net.
 

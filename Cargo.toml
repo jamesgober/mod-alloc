@@ -35,8 +35,8 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-# v0.9.2 `symbolicate` opt-in: approved external-dep exception
-# per `.dev/DIRECTIVES.md` section 2.2. Default builds and the
+# v0.9.2 `symbolicate` opt-in: approved external-dep exception.
+# Default builds and the
 # allocation hot path remain zero-runtime-dep.
 # `std-object` is the addr2line feature that wires the
 # `Context::new(&object_file)` constructor + the `EndianRcSlice`
