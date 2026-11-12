@@ -161,3 +161,21 @@ jobs:
       - name: Test under ASAN
         run: |
           cargo test --features backtraces --target x86_64-unknown-linux-gnu -Zbuild-std --verbose
+
+  miri:
+    name: Miri (nightly Linux)
+    runs-on: ubuntu-latest
+    env:
+      MIRIFLAGS: "-Zmiri-strict-provenance"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      # Counter, profiler and reset paths only. The `backtraces`
+      # feature reads registers with inline assembly, which Miri does
+      # not support, so those paths stay with the ASAN job.
+      - name: Miri (default features)
+        run: |
+          cargo miri setup
+          cargo miri test --lib --test regress_dangling_handle --test regress_reset_live --test regress_window_peak --test smoke --test counters_accuracy --test profiler_delta

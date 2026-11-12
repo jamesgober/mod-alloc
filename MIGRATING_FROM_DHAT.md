@@ -75,7 +75,7 @@ dhat = "0.3"
 
 # After
 [dependencies]
-mod-alloc = { version = "0.9", features = ["dhat-compat"] }
+mod-alloc = { version = "1", features = ["dhat-compat"] }
 ```
 
 ## API surface mapping
@@ -94,7 +94,7 @@ mod-alloc = { version = "0.9", features = ["dhat-compat"] }
 | `.trim_backtraces(n)`         | `.trim_backtraces(n)`            | clamped to walker cap (8)       |
 | `.build()`                    | `.build()`                       | identical                       |
 | `dhat::HeapStats`             | `HeapStats`                      | identical fields                |
-| `dhat::HeapStats::get()`      | `HeapStats::get()`               | identical                       |
+| `dhat::HeapStats::get()`      | `HeapStats::get()`               | see difference 6                |
 | `dhat::AdHocStats`            | `AdHocStats`                     | identical fields                |
 | `dhat::AdHocStats::get()`     | `AdHocStats::get()`              | identical                       |
 | `dhat::ad_hoc_event(w)`       | `ad_hoc_event(w)`                | identical                       |
@@ -162,8 +162,20 @@ mandatory `backtrace`/`addr2line` deps. Enable `symbolicate`
 to match dhat's resolution quality:
 
 ```toml
-mod-alloc = { version = "0.9", features = ["dhat-compat", "symbolicate"] }
+mod-alloc = { version = "1", features = ["dhat-compat", "symbolicate"] }
 ```
+
+### 6. `HeapStats::get()` outside a Profiler
+
+While a `Profiler` is alive, `HeapStats::get()` counts from the
+moment the first live Profiler was built, as dhat-rs does (since
+mod-alloc 1.1.0; earlier versions counted from process start).
+`curr_*` is the change in live blocks and bytes since then, so
+freeing a block allocated before the Profiler does not count
+against it, and `max_*` is the peak reached during the session
+above what was live when it began. dhat-rs panics when no
+Profiler is alive; mod-alloc returns figures for the whole
+process instead.
 
 ## Build requirements
 

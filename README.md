@@ -36,8 +36,7 @@ it is installed:
 The allocation hot path is `std`-only. No `backtrace`, no `libc`,
 no `gimli` in the alloc path. Inline frame-pointer walking on
 `x86_64` and `aarch64` for call-site capture; raw `mmap` /
-`VirtualAlloc` for the per-thread arena and the global
-aggregation table.
+`VirtualAlloc` for the global aggregation table.
 
 The opt-in `symbolicate` feature pulls in pure-Rust `addr2line` +
 `object` + `pdb` + `rustc-demangle` for offline report
@@ -143,7 +142,7 @@ Combine with `symbolicate` for resolved function names plus file
 and line where available:
 
 ```toml
-mod-alloc = { version = "0.9", features = ["symbolicate", "dhat-compat"] }
+mod-alloc = { version = "1", features = ["symbolicate", "dhat-compat"] }
 ```
 
 The JSON writer is hand-rolled — no `serde` / `serde_json`
@@ -168,6 +167,36 @@ per-thread arena layer and writing each captured event straight
 to the global aggregation table — `table::record`'s steady-state
 matching path is two atomic operations, so the arena's batching
 no longer paid for itself.
+
+### Threads
+
+Since 1.1.0 the cumulative counters (`alloc_count`, `total_bytes`)
+are kept per thread stripe and summed when read, so threads no
+longer contend on them. The live counters (`current_bytes`,
+`live_count`) stay shared, because exact peaks need one running
+total. Measured on a loaded 32-thread Windows x86_64 host, 32-byte
+box allocate + free, release build, aggregate nanoseconds per
+operation (three runs each, interleaved):
+
+| Build    | 1 thread | 8 threads |
+|----------|---------:|----------:|
+| `System` |  36-55   |   6-26    |
+| 1.0.1    |  67-80   |  76-143   |
+| 1.1.0    |  62-73   |   35-68   |
+
+## Counter semantics
+
+- `ModAlloc::reset()` starts a new measurement period: it zeroes
+  `alloc_count` and `total_bytes` and sets the peaks to the current
+  values. Live memory stays counted, so it is safe with any number
+  of live allocations. (Before 1.1.0 it zeroed everything, and the
+  live counters wrapped as older blocks were freed.)
+- `Profiler::stop()` reports the peaks reached during its own
+  window. Nested and concurrent profilers each keep their own peak
+  (up to 8 at once).
+- `Profiler` reads the `ModAlloc` behind the installed
+  `#[global_allocator]`. A `ModAlloc` used directly keeps its own
+  counters, readable with `snapshot()`.
 
 ## Why a new allocation profiler
 

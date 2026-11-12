@@ -170,25 +170,18 @@ mod tests {
     }
 
     #[test]
-    fn heap_stats_reflects_zero_initial_state_on_uninstalled_path() {
-        // Without anything installed as `#[global_allocator]`,
-        // `HeapStats::get` returns zeros (the GLOBAL_HANDLE
-        // path's null-pointer branch). The integration test
-        // covers the installed path.
-        // We cannot reliably assert zeros here in unit-test
-        // position because the test harness itself uses the
-        // system allocator and may have populated the
-        // GLOBAL_HANDLE from prior tests that exercised
-        // `ModAlloc`. Shape-only smoke check:
+    fn heap_stats_is_zero_without_an_installed_mod_alloc() {
+        // The unit-test binary's global allocator is `System`, so
+        // `HeapStats::get` finds no `ModAlloc` and returns zeros,
+        // even though other unit tests use `ModAlloc` values
+        // directly. (Before 1.1.0 such a value could become the
+        // handle that `HeapStats::get` read.)
         let s = HeapStats::get();
-        // Field access shapes; no value assertions.
-        let _ = (
-            s.total_blocks,
-            s.total_bytes,
-            s.curr_blocks,
-            s.curr_bytes,
-            s.max_blocks,
-            s.max_bytes,
-        );
+        assert_eq!(s.total_blocks, 0);
+        assert_eq!(s.total_bytes, 0);
+        assert_eq!(s.curr_blocks, 0);
+        assert_eq!(s.curr_bytes, 0);
+        assert_eq!(s.max_blocks, 0);
+        assert_eq!(s.max_bytes, 0);
     }
 }

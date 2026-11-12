@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-12
+
+Fixes from an independent review: a use-after-free reachable from
+safe code, counter wrap after `reset()`, and profiler peaks that
+covered the whole process. Upgrading is recommended for every user.
+
+### Security
+
+- **`Profiler` could read freed memory.** The first `ModAlloc` to
+  serve an allocation published its own address for `Profiler` and
+  `dhat_compat::HeapStats` to read, even a short-lived local one.
+  Once that value was dropped, `Profiler::start()`, `Profiler::stop()`
+  and `HeapStats::get()`, all safe functions, read a dead stack frame
+  or freed heap memory (undefined behaviour, confirmed with Miri).
+  Allocation no longer registers anything. `Profiler` now finds the
+  instance behind the installed `#[global_allocator]` with one probe
+  allocation through `std::alloc::alloc`, and a global allocator is
+  always a `static`. A `ModAlloc` used directly keeps its own
+  counters and is never read by `Profiler`.
+
+### Fixed
+
+- **`reset()` with live allocations made the counters wrap.** Freeing
+  a block allocated before the reset drove `current_bytes` and
+  `live_count` below zero. Debug builds then panicked inside
+  `GlobalAlloc::alloc` on the next allocation, and release builds
+  reported a peak near `u64::MAX`. The live counters are now signed
+  and read as at least zero, the allocator path uses wrapping
+  arithmetic only, and `reset()` has a defined meaning: it zeroes
+  `alloc_count` and `total_bytes` and sets the peaks to the current
+  values, leaving `current_bytes` and `live_count` alone. It is safe
+  to call with any number of live allocations.
+- **`Profiler::stop()` reported the lifetime peak**, not the peak of
+  the profiling window as documented. Each `Profiler` now tracks its
+  own window peak (`peak_bytes` and `peak_live_count`, absolute
+  values), so a large block freed before `start()` no longer shows.
+  Nested and concurrent profilers each keep their own peak, up to 8
+  at once; a ninth falls back to the lifetime peak.
+- **`dhat_compat::HeapStats::get()` counted since process start.**
+  While a `dhat_compat::Profiler` is alive it now counts from the
+  moment the first live Profiler was built, as dhat-rs does, so the
+  usual dhat-rs test pattern (`total_blocks`, `max_bytes` after a
+  known workload) works after the import change. With no Profiler
+  alive it still reports the whole process.
+- The call-site table (`backtraces`) bounds each probe to 256
+  buckets, so once the table is full an event from a new call site
+  is dropped quickly instead of scanning every bucket.
+
+### Changed
+
+- **Counting scales across threads.** The cumulative counters
+  (`alloc_count`, `total_bytes`) are kept in 16 cache-padded stripes,
+  one per thread round-robin, and summed when read. The live counters
+  stay shared so peaks remain exact, and peaks are written only when
+  a new high is reached. Measured on a loaded 32-thread Windows
+  x86_64 host, 32-byte box allocate + free, release, aggregate ns per
+  operation over three interleaved runs: 1 thread 67-80 before,
+  62-73 after; 8 threads 76-143 before, 35-68 after (`System`: 36-55
+  and 6-26). Eight threads now get more total throughput than one.
+- `ModAlloc` is larger (about 2.4 KiB, 128-byte aligned) because of
+  the stripes.
+- `snapshot()` never reports a peak below the current value.
+
+### Documentation
+
+- Crate docs, README and `MIGRATING_FROM_DHAT.md` describe the
+  `reset()` and peak semantics, and the `HeapStats` session rule.
+- Stale references to the removed per-thread arena and to
+  `version = "0.9"` are gone.
+
+### Testing
+
+- Regression tests for each fix, each failing on 1.0.1:
+  `regress_dangling_handle`, `regress_reset_live`,
+  `regress_window_peak`, `regress_dhat_heap_stats`, plus unit tests
+  for signed accounting, `reset()` rebasing, stripes and windows.
+- New CI job runs the counter, profiler and reset tests under Miri.
+
+[1.1.0]: https://github.com/jamesgober/mod-alloc/compare/v1.0.1...v1.1.0
+
 ## [1.0.1] - 2026-10-09
 
 `dhat_compat::Alloc` stops recording call sites when no `Profiler` is

@@ -150,6 +150,11 @@ fn ensure_init_slow() -> Option<(*mut Bucket, usize, usize)> {
     }
 }
 
+// Longest run of buckets one event inspects before it is dropped.
+// Far above the expected probe length of linear probing below 90%
+// load, so it only cuts off searches in a full table.
+const MAX_PROBE: usize = 256;
+
 /// Record one captured event into the global table.
 ///
 /// Called from `backtrace::record_event` on every tracked alloc.
@@ -170,7 +175,10 @@ pub(crate) fn record(frames: &Frames, size: u64) {
     };
     let h = hash_frames(&frames.frames, count);
     let mut idx = (h as usize) & mask;
-    let start = idx;
+    // Bounded probe: once the table is (nearly) full, an event from
+    // an unseen call site gives up after `MAX_PROBE` buckets instead
+    // of walking the whole table.
+    let mut probes = MAX_PROBE.min(mask + 1);
 
     loop {
         // SAFETY: `base` is the start of an array of length
@@ -227,8 +235,9 @@ pub(crate) fn record(frames: &Frames, size: u64) {
         }
 
         idx = (idx + 1) & mask;
-        if idx == start {
-            // Table full; drop event silently. Tracked in v0.9.2.
+        probes -= 1;
+        if probes == 0 {
+            // Table full around this hash; drop the event.
             return;
         }
     }
